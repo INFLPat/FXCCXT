@@ -314,4 +314,10 @@ Self-audit performed before finalising this document — every major thread from
 
 **Not carried into this document because it doesn't need to be**: the turn-by-turn conversational back-and-forth itself (which questions were asked in which order) — what matters is the decisions and reasoning that resulted, which are all captured above.
 
-**File packaging note**: this document is included inside the `fx_trader/` project folder and packaged into `fx_trader.zip` alongside the full codebase. Upload either the zip (extracted) or its contents to this Claude Project's file/knowledge area so a new chat within the Project can actually access the code — a Project-level system prompt or memory does not automatically include sandbox files from a prior conversation.
+**File packaging note**: this document is included inside the `fx_trader/` project folder and packaged into `fx_trader.zip` alongside the full codebase.
+
+**Getting this into the Project (file upload of a folder does NOT work in Claude Projects — confirmed, not a one-off glitch):** Claude Projects' knowledge area is flat with no folder/subfolder support at all, so uploading a folder directly will always error, and uploading its contents flattens everything into one undifferentiated file list. Two working options:
+1. **Preferred: connect via the GitHub integration** (Project knowledge panel → "+" → GitHub). This is the only option that preserves real folder structure in a way Claude can browse, and gives a one-click "Sync now" for updates. Push this codebase to a private GitHub repo, connect it once, re-sync whenever it changes.
+2. **Fallback: upload `fx_trader.zip` as a single knowledge file.** Claude can't browse inside it from the Project's file list, but any Claude instance with code execution enabled can extract it into a working sandbox at the start of a session and recover the full structure. Update by deleting the old zip and uploading a fresh one — there's no versioning, so don't leave stale copies sitting alongside the current one.
+
+Either way, a fresh instance should extract/sync the codebase and read this document in full **before** writing or changing anything — ideally enforced via a Project custom instruction rather than repeated by hand each session.
