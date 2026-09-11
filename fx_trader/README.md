@@ -2,6 +2,23 @@
 
 A backtestable, cost-aware FX trading pipeline. Built to go: historical data → strategy → backtest → paper trading → (eventually, carefully) live trading, using the *same* strategy code at every stage, against a cloud database and a broker-agnostic execution layer.
 
+## Working across Claude chats (GitHub sync workflow)
+
+This project is developed across multiple Claude.ai chats inside one Claude Project, with this GitHub repo (`INFLPat/FXCCXT`, public) as the source of truth for code between sessions.
+
+**Read this before assuming otherwise: Claude.ai's GitHub integration is pull-only.** There is no automatic push from a Claude chat back to this repo, on any plan — the Project's "Context" panel only reads repo content into a chat's context.
+
+The real workflow, every session:
+1. New chat → pulls the current GitHub state into context via the Project's Context panel (hit its refresh/sync control if content looks stale).
+2. Claude edits or produces files inside that chat's own sandbox.
+3. The user downloads those files.
+4. The user pushes them to GitHub — via `git`, or by manually re-uploading/editing the changed file(s) on github.com.
+5. The user refreshes/syncs the Context panel so the *next* chat picks up the change.
+
+**Never push a stale bulk copy of the whole project without first confirming the chat's GitHub context is current.** Doing so can silently overwrite work committed by a different, more recent chat. Always sync from GitHub at the start of a session, and push only the specific files that actually changed that session.
+
+A fully automated push (no manual step 3/4) would require **Claude Code** instead of this chat interface — a separate Anthropic product with real local git access. Not currently in use for this project.
+
 ## Project layout
 
 ```
