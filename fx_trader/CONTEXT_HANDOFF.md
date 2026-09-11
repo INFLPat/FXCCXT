@@ -314,10 +314,29 @@ Self-audit performed before finalising this document — every major thread from
 
 **Not carried into this document because it doesn't need to be**: the turn-by-turn conversational back-and-forth itself (which questions were asked in which order) — what matters is the decisions and reasoning that resulted, which are all captured above.
 
-**File packaging note**: this document is included inside the `fx_trader/` project folder and packaged into `fx_trader.zip` alongside the full codebase.
+**File packaging note — superseded, see Section 14**: the zip/manual-upload approach described here was the workaround used before the GitHub connector was set up. It's no longer how this project distributes code between chats; don't follow it. Section 14 below documents the current, correct process.
 
-**Getting this into the Project (file upload of a folder does NOT work in Claude Projects — confirmed, not a one-off glitch):** Claude Projects' knowledge area is flat with no folder/subfolder support at all, so uploading a folder directly will always error, and uploading its contents flattens everything into one undifferentiated file list. Two working options:
-1. **Preferred: connect via the GitHub integration** (Project knowledge panel → "+" → GitHub). This is the only option that preserves real folder structure in a way Claude can browse, and gives a one-click "Sync now" for updates. Push this codebase to a private GitHub repo, connect it once, re-sync whenever it changes.
-2. **Fallback: upload `fx_trader.zip` as a single knowledge file.** Claude can't browse inside it from the Project's file list, but any Claude instance with code execution enabled can extract it into a working sandbox at the start of a session and recover the full structure. Update by deleting the old zip and uploading a fresh one — there's no versioning, so don't leave stale copies sitting alongside the current one.
+---
 
-Either way, a fresh instance should extract/sync the codebase and read this document in full **before** writing or changing anything — ideally enforced via a Project custom instruction rather than repeated by hand each session.
+## 14. GITHUB SYNC — CONFIRMED WORKING (added by a later session)
+
+The earlier "immediate unresolved issue" around folder upload (top-level `fx_trader/` folder upload unsupported, individual subdirectory files also failing) is **resolved**, not by flattening or zipping, but by connecting the repo directly.
+
+**Setup, now live**: repo is `github.com/INFLPat/FXCCXT` (public). Connected via the Project's **Context** panel → `+` → GitHub → repo added. This is the current, correct mechanism — ignore any earlier note in this document about uploading a zip or individual files.
+
+**Repo structure**: `README.md` at repo root is now a short pointer only (points to the two files below) — it is deliberately NOT a duplicate of `fx_trader/README.md` anymore, to stop the two drifting out of sync. `fx_trader/README.md` remains the canonical, detailed technical reference. `fx_trader/CONTEXT_HANDOFF.md` (this file) remains the "read first" document for a new session.
+
+**Critical limitation, confirmed directly, not assumed**: Claude.ai's GitHub integration is **pull-only**, on any plan. There is no automatic or built-in push from a Claude.ai chat back to this repo — confirmed against Anthropic's current documentation and by testing directly (this chat's own sandbox has no network access at all, so even manual `git push` from here isn't physically possible). Don't assume this changes without checking again.
+
+**The actual workflow, every session** (also documented in `fx_trader/README.md`, keep both in sync if this ever changes):
+1. New chat → pulls current GitHub state into context via the Context panel (hit its refresh/sync control if content looks stale).
+2. Claude edits or produces files inside that chat's own sandbox.
+3. The user downloads those files.
+4. The user pushes them to GitHub — via `git`, or by manually re-uploading/editing the changed file(s) on github.com.
+5. The user refreshes/syncs the Context panel so the *next* chat picks up the change.
+
+**Guardrail, stated explicitly because it's the most likely failure mode of this whole setup**: never regenerate and hand back "the full project" as a bulk download-and-reupload — this risks silently reverting work done in a different, more recent chat, since there's no way for one chat to know what another chat has since pushed. Confirm the chat's GitHub context was actually synced at the *start* of the session before pushing anything, and push only the specific files that changed in that session. If you (Claude, reading this in a future session) are asked to "resend the whole project," point the person to `git clone`/"Download ZIP" directly from GitHub instead — that's guaranteed current; a regenerated copy from a chat's own context is not.
+
+**If a fully automated push is ever wanted** (no manual step 3/4 above), that requires **Claude Code** instead of the Claude.ai chat interface — a separate Anthropic product with real local git access. Not in use for this project as of this note.
+
+**Corresponding Project Instructions** (pasted into the Project's Instructions panel by the person, not stored in this repo) tell every new chat to check Context sync status and follow this same pull → edit → download → user-pushes → sync loop before touching code.
