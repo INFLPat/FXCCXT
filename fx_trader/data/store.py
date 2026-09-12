@@ -216,6 +216,51 @@ class FxStore:
             cur.execute(query, params)
             return [Candle(*row) for row in cur.fetchall()]
 
+    def get_candles_multi(
+        self,
+        instruments: list[str],
+        granularity: str,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> dict[str, list[Candle]]:
+        """
+        Fetch candles for several instruments in one query, grouped by
+        instrument - added for the cross-instrument comparison work (the
+        planned cartesian/rotation layer) that needs many instruments'
+        history at once, rather than issuing one round-trip per instrument
+        via get_candles(). Every requested instrument is present as a key
+        in the result, even if it has no data (empty list) - a caller
+        shouldn't need to distinguish "no data" from "wasn't asked for" by
+        checking dict membership.
+        """
+        if not instruments:
+            return {}
+        ph = self._ph
+        placeholders = ", ".join([ph] * len(instruments))
+        query = (
+            "SELECT instrument, granularity, timestamp, "
+            "bid_open, bid_high, bid_low, bid_close, "
+            "ask_open, ask_high, ask_low, ask_close, volume "
+            f"FROM candles WHERE instrument IN ({placeholders}) AND granularity = {ph}"
+        )
+        params: list[str] = list(instruments) + [granularity]
+        if start:
+            query += f" AND timestamp >= {ph}"
+            params.append(start)
+        if end:
+            query += f" AND timestamp <= {ph}"
+            params.append(end)
+        query += " ORDER BY instrument ASC, timestamp ASC"
+
+        result: dict[str, list[Candle]] = {instrument: [] for instrument in instruments}
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(query, params)
+            for row in cur.fetchall():
+                candle = Candle(*row)
+                result[candle.instrument].append(candle)
+        return result
+
     def coverage(self, instrument: str, granularity: str) -> tuple[str, str] | None:
         """Return (earliest, latest) timestamp available, or None if no data."""
         ph = self._ph
