@@ -1,0 +1,19 @@
+# Local/generated market data - never committed.
+# Real market data has redistribution restrictions and the Claude GitHub
+# integration can't usefully read binary files anyway - see
+# fx_trader/CONTEXT_HANDOFF.md Section 8. Re-upload the .db directly to
+# whichever chat needs it instead.
+fx_trader/data/*.db
+fx_trader/data/*.db-journal
+
+# Credentials - never commit these, however you choose to set them locally
+.env
+*.env
+fx_trader/.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
