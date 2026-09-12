@@ -96,6 +96,19 @@ class OandaBroker(BrokerAdapter):
     def fetch_candles(
         self, instrument: str, granularity: str, start: datetime, end: datetime
     ) -> list[Candle]:
+        """
+        SECOND CONFIRMED BUG, FOUND AND FIXED (same real-run process as the
+        timestamp fix above): OANDA's own OpenAPI spec states explicitly -
+        "Count should not be specified if both the start and end parameters
+        are provided, as the time range combined with the granularity will
+        determine the number of candlesticks to return." This method used to
+        send `from`, `to`, AND `count` together on every request, which is
+        exactly the combination OANDA's spec says not to use - and matches
+        the 400 Bad Request that persisted even after the timestamp-format
+        fix alone. Fixed by never sending `to` to the API at all: paginate
+        with `from`+`count` only (the standard, spec-compliant pattern), and
+        filter each response against `end` client-side instead.
+        """
         all_candles: list[Candle] = []
         cursor = start
 
@@ -104,7 +117,6 @@ class OandaBroker(BrokerAdapter):
                 "price": "BA",
                 "granularity": granularity,
                 "from": _format_oanda_time(cursor),
-                "to": _format_oanda_time(end),
                 "count": MAX_CANDLES_PER_REQUEST,
             }
             resp = self.session.get(
@@ -117,6 +129,9 @@ class OandaBroker(BrokerAdapter):
 
             batch = []
             for rc in raw_candles:
+                rc_time = datetime.fromisoformat(rc["time"].replace("Z", "+00:00"))
+                if rc_time > end:
+                    continue  # past the requested range - skip, don't assume ordering
                 if not rc.get("complete", True):
                     continue
                 bid, ask = rc["bid"], rc["ask"]
@@ -132,11 +147,11 @@ class OandaBroker(BrokerAdapter):
                 )
             all_candles.extend(batch)
 
-            if len(raw_candles) < MAX_CANDLES_PER_REQUEST:
-                break
             last_time = datetime.fromisoformat(raw_candles[-1]["time"].replace("Z", "+00:00"))
-            if last_time <= cursor:
+            if len(raw_candles) < MAX_CANDLES_PER_REQUEST or last_time >= end:
                 break
+            if last_time <= cursor:
+                break  # safety: avoid infinite loop if pagination doesn't advance
             cursor = last_time
 
         return all_candles
