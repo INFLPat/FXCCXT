@@ -14,11 +14,25 @@ Setup:
 Testing status: fetch_candles was carried over from the original client and
 follows OANDA's documented v20 candle endpoint. get_quote and
 place_market_order are new and implement the documented pricing and order
-endpoints, but - like everything broker-facing in this project - I have not
-been able to run any of this against OANDA's servers from this sandbox (no
-network access here). Test thoroughly against your practice account before
-trusting it, and definitely before place_market_order ever touches a live
-account.
+endpoints.
+
+CONFIRMED BUG, FOUND AND FIXED (first real run against a practice account):
+fetch_candles previously built its 'from'/'to' request parameters with
+Python's datetime.isoformat(), which renders a UTC-aware datetime as
+"...+00:00" (e.g. "2026-01-01T00:00:00+00:00"). OANDA's v20 API expects a
+literal "Z" suffix for UTC instead (its own documented examples use
+"2017-01-01T00:00:00Z", and its own candle responses are always Z-suffixed)
+- sending "+00:00" produced an immediate 400 Bad Request on every single
+FX instrument, every time, which is exactly what a real run surfaced. Fixed
+via _format_oanda_time() below. This had been sitting untested since this
+sandbox has no network access to catch it sooner - now genuinely verified
+against a live 400 error and a reasoned fix, though the FIX ITSELF still
+needs a real re-run to confirm it actually resolves it (I still can't reach
+OANDA's servers to confirm this myself).
+
+get_quote and place_market_order have not been exercised against a real
+account at all yet - treat them with the same caution fetch_candles had
+until this fix, since they build request bodies by hand in the same way.
 """
 
 import os
@@ -35,6 +49,14 @@ BASE_URLS = {
 }
 
 MAX_CANDLES_PER_REQUEST = 5000
+
+
+def _format_oanda_time(dt: datetime) -> str:
+    """OANDA's v20 API expects RFC3339 timestamps with a literal 'Z' suffix
+    for UTC - NOT Python's default isoformat(), which produces '+00:00'.
+    Confirmed by a real 400 Bad Request against a practice account before
+    this fix - see module docstring."""
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000000000Z")
 
 
 class OandaBroker(BrokerAdapter):
@@ -81,8 +103,8 @@ class OandaBroker(BrokerAdapter):
             params = {
                 "price": "BA",
                 "granularity": granularity,
-                "from": cursor.astimezone(timezone.utc).isoformat(),
-                "to": end.astimezone(timezone.utc).isoformat(),
+                "from": _format_oanda_time(cursor),
+                "to": _format_oanda_time(end),
                 "count": MAX_CANDLES_PER_REQUEST,
             }
             resp = self.session.get(
@@ -130,8 +152,6 @@ class OandaBroker(BrokerAdapter):
         if not prices:
             raise RuntimeError(f"No pricing returned for {instrument}")
         p = prices[0]
-        # OANDA returns arrays of price "buckets" at different liquidity tiers;
-        # the first bucket is the best available price
         return Quote(
             broker=self.name,
             instrument=instrument,
@@ -150,8 +170,8 @@ class OandaBroker(BrokerAdapter):
             "order": {
                 "type": "MARKET",
                 "instrument": instrument,
-                "units": str(int(units)),  # OANDA expects a string; positive=buy, negative=sell
-                "timeInForce": "FOK",       # fill-or-kill: avoids partial fills at an unexpected price
+                "units": str(int(units)),
+                "timeInForce": "FOK",
                 "positionFill": "DEFAULT",
             }
         }
