@@ -26,7 +26,8 @@ A fully automated push (no manual step 3/4) would require **Claude Code** instea
 ```
 fx_trader/
 ├── VALIDATION_HIERARCHY.md   # Tiered validation/persistence gate - which checks run before a result is allowed to persist
-├── fetch_sandbox_data.py     # Pulls a real 6-month FX+crypto dataset via OandaBroker/CcxtBroker - written, not yet run
+├── fetch_sandbox_data.py     # Pulls real FX (OANDA) + USD-crypto (Binance) data - working, verified (12/16 instruments)
+├── ingest_kraken_gbp_csv.py  # Loads Kraken's bulk historical CSVs for the 4 GBP-crypto pairs - Kraken's live API can't serve this depth
 ├── data/
 │   ├── store.py               # Candle storage - SQLite (local) or Postgres (cloud), same code. Includes get_candles_multi() for cross-instrument queries.
 │   └── run_store.py           # RunStore: persists validated backtest results (trades, params, metrics), tagged with the validation tier reached
@@ -72,7 +73,11 @@ Everything above this point in the project's history ran on synthetic data. `fet
 - Crypto vs USD (Binance): `BTC/USDT, ETH/USDT, XRP/USDT, LTC/USDT`
 - Crypto vs GBP (Kraken): `BTC/GBP, ETH/GBP, XRP/GBP, LTC/GBP`
 
-Same 4 crypto assets on both quote currencies deliberately, so any USD-vs-GBP behavioural difference a strategy shows is a real quote-currency effect, not a different-asset artifact. Run it locally (this project's own build sandbox has no network access) and upload the resulting `data/sandbox_2026h1.db` - see the script's own docstring for exact setup steps. **Status: written, not yet run** - see the verification table below.
+Same 4 crypto assets on both quote currencies deliberately, so any USD-vs-GBP behavioural difference a strategy shows is a real quote-currency effect, not a different-asset artifact. Run it locally (this project's own build sandbox has no network access) and upload the resulting `data/sandbox_2026h1.db` - see the script's own docstring for exact setup steps.
+
+**Status: FX + USD-crypto (12/16 instruments) genuinely run and verified.** Getting there took finding and fixing two real bugs in `brokers/oanda.py`'s `fetch_candles` - a timestamp-format issue (OANDA's API wants a literal `Z` suffix, not Python's default `+00:00`) and a request-parameter issue (OANDA's own spec: don't send `count` together with both `from` and `to`). Both were only findable by actually running the code against a real account - see `CONTEXT_HANDOFF.md` Section 16 for the full diagnostic story.
+
+**Kraken (the 4 GBP-crypto pairs) needed a separate path entirely.** Kraken's live OHLC API only serves a rolling recent window regardless of the date requested - a real, external limitation, not a bug here. Worked around via `ingest_kraken_gbp_csv.py`, which loads Kraken's own bulk historical CSV export instead. That export is itself a point-in-time snapshot, though - if it predates 2026, Kraken's separate quarterly "Incremental Updates" files are needed on top. **Status: parser verified against real data, but the 4 GBP-crypto instruments were still unconfirmed as of the last check** - see `CONTEXT_HANDOFF.md` Section 16/Open Threads for exact next steps.
 
 Backtest **results** (as opposed to raw market data) now have somewhere to live: `RunStore` (`data/run_store.py`) persists a run's trades, parameters, cost model, and summary metrics, tagged with which tier of validation it cleared. `BacktestEngine.run()` deliberately stays a pure function with no side effects - persistence is always an explicit, separate call, never automatic, specifically so `sensitivity.py`'s grid searches and `bootstrap.py`'s resampling (which each run many backtests internally) don't flood the store with noise.
 
@@ -95,7 +100,10 @@ I can run Python in a sandbox while building this, but that sandbox has **no net
 | CostModel percentage-based costs (`commission_pct`/`slippage_pct`) | ✅ Run + hand-verified, same rigor as the pip-based costs |
 | `CcxtBroker`'s own logic (OHLCV mapping, pagination, quote/order/balance handling) | ✅ Run against a fake exchange object - genuinely verified, no ccxt install or network needed for this |
 | `CcxtBroker` against a real exchange | ⚠️ Never run against real ccxt or a live exchange |
-| `fetch_sandbox_data.py` (OANDA + Binance + Kraken, 16 instruments, one run) | ⚠️ **Never run.** First time OandaBroker and CcxtBroker are exercised together, first time two ccxt exchanges are used in one run, first time any GBP-quoted crypto pair is touched. Higher-risk than earlier single-instrument tests for exactly that reason - run it and report full output back |
+| `fetch_sandbox_data.py` - FX via OANDA (8 instruments) | ✅ **Run and verified**, after finding and fixing two real bugs in `OandaBroker.fetch_candles` (timestamp format, count/from/to combination - see `CONTEXT_HANDOFF.md` Section 16). 3,075 candles/instrument, sane real prices and spreads |
+| `fetch_sandbox_data.py` - USD-crypto via Binance (4 instruments) | ✅ **Run and verified** on the first attempt. Exactly 4,344 candles/instrument (181 days × 24h, exact match), sane real prices |
+| `fetch_sandbox_data.py` - GBP-crypto via Kraken (4 instruments) | ⚠️ **Kraken's live OHLC API confirmed not to work for this** - only serves a rolling recent window, not historical depth. Worked around via `ingest_kraken_gbp_csv.py` (bulk CSV, separate from the live API) - parser verified against real sample data, but the actual 4-instrument ingestion was still unconfirmed as of the last check, likely blocked on Kraken's base archive predating 2026 |
+| `OandaBroker.get_quote` / `place_market_order` | ⚠️ Still never run. **Treat with more suspicion than before** - `fetch_candles` looked equally reasonable on paper and had two real bugs |
 | `BrokerRouter` routing logic (best bid/ask selection, graceful failure) | ✅ Run + verified with two independent fake exchanges quoting different prices |
 | Walk-forward selection + state/position continuity (`warm_start`, `initial_trade`) | ✅ Run + hand-verified |
 | Sensitivity analysis (`neighbor_gap`, `heatmap_grid`, `marginal_effect`, invalid-combo handling) | ✅ Run + hand-verified against a constructed grid with a known, deliberate spike |
@@ -200,10 +208,11 @@ On the existing synthetic-data run: close to breakeven out-of-sample (+0.12% com
 
 ## Suggested next steps, in order
 
-1. **Run `fetch_sandbox_data.py` locally** and upload the resulting `data/sandbox_2026h1.db` - this is the actual next step, see `CONTEXT_HANDOFF.md` Section 9.
-2. Run the SMA crossover strategy against all 16 sandbox instruments through `VALIDATION_HIERARCHY.md`'s tiers, cheapest first.
+1. **Resolve the Kraken GBP-crypto gap.** Check the actual last date in the bulk CSV files (`tail -3 kraken_csv/XBTGBP_60.csv`), get Kraken's quarterly incremental-update files if the base snapshot predates 2026, re-run `ingest_kraken_gbp_csv.py`. See `CONTEXT_HANDOFF.md` Section 16/Open Threads.
+2. Once genuinely 16/16: run the SMA crossover strategy against all 16 sandbox instruments through `VALIDATION_HIERARCHY.md`'s tiers, cheapest first.
 3. Only strategies/parameter sets that clear the full hierarchy get persisted via `RunStore`.
-4. Once the sandbox dataset and persistence layer are proven against real data, build the actual Tier 0-4 orchestrator.
-5. Only then, and only in a dedicated future session per standing instruction, start on the cross-pair/cartesian rotation comparator.
+4. Test `OandaBroker.get_quote`/`place_market_order` explicitly before trusting either - `fetch_candles`'s two-bug history in the same file is a reason for extra scrutiny, not less.
+5. Once the sandbox dataset and persistence layer are proven against real data, build the actual Tier 0-4 orchestrator.
+6. Only then, and only in a dedicated future session per standing instruction, start on the cross-pair/cartesian rotation comparator - with the finer-granularity expectation already discussed in `CONTEXT_HANDOFF.md` Section 16 in hand before that session starts.
 
 I'm not a financial advisor and this isn't financial advice - this project is about building a sound, honest testing and execution pipeline, not about telling you what will make money. FX and crypto trading carry real risk of loss, and automation doesn't remove that risk - it just executes your mistakes faster.
