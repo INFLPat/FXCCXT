@@ -67,17 +67,19 @@ fx_trader/
 
 ## Real-data sandbox, run persistence & validation hierarchy
 
-Everything above this point in the project's history ran on synthetic data. `fetch_sandbox_data.py` pulls a **fixed, real 6-month window** (2026-01-01 to 2026-06-30, H1 granularity) across 16 real instruments, chosen for the business's actual GBP/USD/EUR focus:
+**⚠️ Window changed to 2025 H2 (2025-07-01 to 2025-12-31), not 2026 H1 as described in earlier commit history — see `CONTEXT_HANDOFF.md` Section 17 for why (Kraken's Q2 2026 data isn't published yet). Nothing has been fetched for the new window as of this doc update — treat this whole section's "status" lines as the current plan, not yet-confirmed results.**
+
+`fetch_sandbox_data.py` pulls a **fixed, real 6-month window** across 16 real instruments, chosen for the business's actual GBP/USD/EUR focus:
 
 - FX (OANDA): `GBP_USD, EUR_GBP, GBP_JPY, GBP_CHF, EUR_USD, USD_JPY, USD_CHF, USD_CAD`
 - Crypto vs USD (Binance): `BTC/USDT, ETH/USDT, XRP/USDT, LTC/USDT`
 - Crypto vs GBP (Kraken): `BTC/GBP, ETH/GBP, XRP/GBP, LTC/GBP`
 
-Same 4 crypto assets on both quote currencies deliberately, so any USD-vs-GBP behavioural difference a strategy shows is a real quote-currency effect, not a different-asset artifact. Run it locally (this project's own build sandbox has no network access) and upload the resulting `data/sandbox_2026h1.db` - see the script's own docstring for exact setup steps.
+Same 4 crypto assets on both quote currencies deliberately, so any USD-vs-GBP behavioural difference a strategy shows is a real quote-currency effect, not a different-asset artifact. Run it locally (this project's own build sandbox has no network access) and upload the resulting `data/sandbox_2025h2.db` - see the script's own docstring for exact setup steps.
 
-**Status: FX + USD-crypto (12/16 instruments) genuinely run and verified.** Getting there took finding and fixing two real bugs in `brokers/oanda.py`'s `fetch_candles` - a timestamp-format issue (OANDA's API wants a literal `Z` suffix, not Python's default `+00:00`) and a request-parameter issue (OANDA's own spec: don't send `count` together with both `from` and `to`). Both were only findable by actually running the code against a real account - see `CONTEXT_HANDOFF.md` Section 16 for the full diagnostic story.
+**Status: code ready, nothing fetched for 2025 H2 yet.** The 2026 H1 window this section previously described did get to 12/16 real, verified instruments before the window changed - two real bugs were found and fixed in `brokers/oanda.py`'s `fetch_candles` in the process (a timestamp-format issue and a request-parameter issue, both per OANDA's own documentation - see `CONTEXT_HANDOFF.md` Section 16 for the full story). Those fixes are code-level and carry over to the new window unchanged. What doesn't carry over: the actual fetched data, which was for a window no longer in use.
 
-**Kraken (the 4 GBP-crypto pairs) needed a separate path entirely.** Kraken's live OHLC API only serves a rolling recent window regardless of the date requested - a real, external limitation, not a bug here. Worked around via `ingest_kraken_gbp_csv.py`, which loads Kraken's own bulk historical CSV export instead. That export is itself a point-in-time snapshot, though - if it predates 2026, Kraken's separate quarterly "Incremental Updates" files are needed on top. **Status: parser verified against real data, but the 4 GBP-crypto instruments were still unconfirmed as of the last check** - see `CONTEXT_HANDOFF.md` Section 16/Open Threads for exact next steps.
+**Kraken (the 4 GBP-crypto pairs) needs a different path from the other 12, permanently** - not just for this window. Kraken's live OHLC API only serves a rolling recent window regardless of the date requested - a real, external limitation, not a bug here. `ingest_kraken_gbp_csv.py` loads Kraken's own quarterly bulk historical CSV exports instead. For 2025 H2 specifically, that means the 25Q3 and 25Q4 quarterly files - extracted into per-quarter subfolders (`kraken_csv/25Q3/`, `kraken_csv/25Q4/`) since Kraken reuses identical filenames across different quarters' downloads. See `CONTEXT_HANDOFF.md` Section 17 for the full reasoning, including why 25H2 was chosen over other available windows.
 
 Backtest **results** (as opposed to raw market data) now have somewhere to live: `RunStore` (`data/run_store.py`) persists a run's trades, parameters, cost model, and summary metrics, tagged with which tier of validation it cleared. `BacktestEngine.run()` deliberately stays a pure function with no side effects - persistence is always an explicit, separate call, never automatic, specifically so `sensitivity.py`'s grid searches and `bootstrap.py`'s resampling (which each run many backtests internally) don't flood the store with noise.
 
@@ -100,9 +102,9 @@ I can run Python in a sandbox while building this, but that sandbox has **no net
 | CostModel percentage-based costs (`commission_pct`/`slippage_pct`) | ✅ Run + hand-verified, same rigor as the pip-based costs |
 | `CcxtBroker`'s own logic (OHLCV mapping, pagination, quote/order/balance handling) | ✅ Run against a fake exchange object - genuinely verified, no ccxt install or network needed for this |
 | `CcxtBroker` against a real exchange | ⚠️ Never run against real ccxt or a live exchange |
-| `fetch_sandbox_data.py` - FX via OANDA (8 instruments) | ✅ **Run and verified**, after finding and fixing two real bugs in `OandaBroker.fetch_candles` (timestamp format, count/from/to combination - see `CONTEXT_HANDOFF.md` Section 16). 3,075 candles/instrument, sane real prices and spreads |
-| `fetch_sandbox_data.py` - USD-crypto via Binance (4 instruments) | ✅ **Run and verified** on the first attempt. Exactly 4,344 candles/instrument (181 days × 24h, exact match), sane real prices |
-| `fetch_sandbox_data.py` - GBP-crypto via Kraken (4 instruments) | ⚠️ **Kraken's live OHLC API confirmed not to work for this** - only serves a rolling recent window, not historical depth. Worked around via `ingest_kraken_gbp_csv.py` (bulk CSV, separate from the live API) - parser verified against real sample data, but the actual 4-instrument ingestion was still unconfirmed as of the last check, likely blocked on Kraken's base archive predating 2026 |
+| `fetch_sandbox_data.py` - FX via OANDA (8 instruments) | ⚠️ Not yet run for the current 2025 H2 window. Was run and verified for the now-abandoned 2026 H1 window (3,075 candles/instrument, sane data) - both real bugs found there are fixed in code and should carry over, but need re-confirming against this window |
+| `fetch_sandbox_data.py` - USD-crypto via Binance (4 instruments) | ⚠️ Not yet run for 2025 H2. Worked correctly on the first attempt for 2026 H1 (exactly 4,344 candles/instrument) - code unchanged, expected to work again, not yet confirmed |
+| `fetch_sandbox_data.py` - GBP-crypto via Kraken (4 instruments) | ⚠️ Not yet run for 2025 H2. Kraken's live OHLC API confirmed not to work for any historical pull regardless of window - permanent constraint. `ingest_kraken_gbp_csv.py` now targets the 25Q3+25Q4 quarterly incremental files directly (not Kraken's base archive) - parser verified against real sample data, full run for this window not yet attempted |
 | `OandaBroker.get_quote` / `place_market_order` | ⚠️ Still never run. **Treat with more suspicion than before** - `fetch_candles` looked equally reasonable on paper and had two real bugs |
 | `BrokerRouter` routing logic (best bid/ask selection, graceful failure) | ✅ Run + verified with two independent fake exchanges quoting different prices |
 | Walk-forward selection + state/position continuity (`warm_start`, `initial_trade`) | ✅ Run + hand-verified |
@@ -208,11 +210,13 @@ On the existing synthetic-data run: close to breakeven out-of-sample (+0.12% com
 
 ## Suggested next steps, in order
 
-1. **Resolve the Kraken GBP-crypto gap.** Check the actual last date in the bulk CSV files (`tail -3 kraken_csv/XBTGBP_60.csv`), get Kraken's quarterly incremental-update files if the base snapshot predates 2026, re-run `ingest_kraken_gbp_csv.py`. See `CONTEXT_HANDOFF.md` Section 16/Open Threads.
-2. Once genuinely 16/16: run the SMA crossover strategy against all 16 sandbox instruments through `VALIDATION_HIERARCHY.md`'s tiers, cheapest first.
-3. Only strategies/parameter sets that clear the full hierarchy get persisted via `RunStore`.
-4. Test `OandaBroker.get_quote`/`place_market_order` explicitly before trusting either - `fetch_candles`'s two-bug history in the same file is a reason for extra scrutiny, not less.
-5. Once the sandbox dataset and persistence layer are proven against real data, build the actual Tier 0-4 orchestrator.
-6. Only then, and only in a dedicated future session per standing instruction, start on the cross-pair/cartesian rotation comparator - with the finer-granularity expectation already discussed in `CONTEXT_HANDOFF.md` Section 16 in hand before that session starts.
+1. **Run `fetch_sandbox_data.py`** for the new 2025 H2 window (code already updated, not yet executed for this window).
+2. **Extract Kraken's 25Q3 and 25Q4 quarterly incremental downloads** into `kraken_csv/25Q3/` and `kraken_csv/25Q4/` respectively (separate subfolders - Kraken reuses identical filenames across quarters), then run `ingest_kraken_gbp_csv.py`.
+3. Verify genuinely 16/16 real, sane data for 2025 H2 - spot-check actual values, don't just trust row counts. See `CONTEXT_HANDOFF.md` Section 17 for full detail on why the window changed.
+4. Once 16/16: run the SMA crossover strategy against all 16 sandbox instruments through `VALIDATION_HIERARCHY.md`'s tiers, cheapest first.
+5. Only strategies/parameter sets that clear the full hierarchy get persisted via `RunStore`.
+6. Test `OandaBroker.get_quote`/`place_market_order` explicitly before trusting either - `fetch_candles`'s two-bug history in the same file is a reason for extra scrutiny, not less.
+7. Once the sandbox dataset and persistence layer are proven against real data, build the actual Tier 0-4 orchestrator.
+8. Only then, and only in a dedicated future session per standing instruction, start on the cross-pair/cartesian rotation comparator - with the finer-granularity expectation already discussed in `CONTEXT_HANDOFF.md` Section 16 in hand before that session starts.
 
 I'm not a financial advisor and this isn't financial advice - this project is about building a sound, honest testing and execution pipeline, not about telling you what will make money. FX and crypto trading carry real risk of loss, and automation doesn't remove that risk - it just executes your mistakes faster.
