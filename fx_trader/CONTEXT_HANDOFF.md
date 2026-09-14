@@ -2,7 +2,7 @@
 
 **Written by:** Claude (outgoing instance), end of session.
 **Purpose:** Let a fresh Claude instance — with zero memory of this conversation — pick up this project exactly where it left off, with no re-litigating of settled decisions and no loss of context.
-**How to use this document:** Read it fully before touching the code. **Read Section 16 first if you're short on time — it's the most recent session and changes what "immediate next step" means. Section 15 is still fully valid background, just superseded on current status.**
+**How to use this document:** Read it fully before touching the code. **Read Section 17 first — it supersedes the specific dates/numbers in Sections 4, 5, 6, and 16 (the sandbox window changed after Section 16 was written). Sections 15/16 remain accurate as a historical record of what was built and found, just not of the current window.**
 
 **Jurisdictional note (read this early):** The entity building this is **UK-registered; UK law governs.** Regulatory and compliance considerations from here on should be framed specifically around UK requirements (FCA, financial promotions rules, UK GDPR), not generic multi-jurisdiction language. Full detail in RISKS. **The business also leans GBP/USD as its core currencies (GBP as the primary anchor, USD close behind, EUR represented for the UK/EU angle) — see Section 15.**
 
@@ -75,7 +75,9 @@ Unchanged — see RISKS.
 
 ## 4. CURRENT STATE
 
-**As of Section 16, this project has real, verified market data for the first time in its history.**
+**⚠️ SUPERSEDED ON DATES/NUMBERS BY SECTION 17 — the sandbox window changed from 2026 H1 to 2025 H2 after this section was written. The 12/16 figure and candle counts below describe the now-abandoned window; read as historical, not current. What DOES carry over: the code fixes (OandaBroker's two bugs stay fixed regardless of window) and every architectural point below.**
+
+**As of Section 16, this project had real, verified market data for the first time in its history — for the 2026 H1 window, since superseded. See Section 17 for current window and status.**
 
 - **Data layer**: `FxStore` (SQLite verified, Postgres unverified) + `RunStore` (SQLite verified) + `get_candles_multi()` (verified) — all Section 15.
 - **Broker/exchange layer**: `OandaBroker.fetch_candles` — **now genuinely run and verified**, after finding and fixing two real bugs. `get_quote`/`place_market_order` remain completely untested — treat with *more* suspicion than before this session, not less, since the same hand-built-request-params pattern produced two bugs in `fetch_candles`. `CcxtBroker` against Binance — **genuinely run and verified**. `CcxtBroker` against Kraken — run, and genuinely informative: confirmed a real limitation of the exchange, not a defect here.
@@ -94,8 +96,8 @@ fx_trader/
 ├── VALIDATION_HIERARCHY.md
 ├── requirements.txt
 ├── CONTEXT_HANDOFF.md
-├── fetch_sandbox_data.py              — pulls FX (OANDA) + USD-crypto (Binance). WORKING after 2 bug fixes to brokers/oanda.py (Section 16).
-├── ingest_kraken_gbp_csv.py           — Loads Kraken bulk CSVs for the 4 GBP-crypto pairs. Parser verified; full run pending diagnosis (Section 16).
+├── fetch_sandbox_data.py              — pulls FX (OANDA) + USD-crypto (Binance). Window updated to 2025 H2 (Section 17) - not yet re-run for this window.
+├── ingest_kraken_gbp_csv.py           — Loads Kraken bulk CSVs for the 4 GBP-crypto pairs, from per-quarter subfolders (kraken_csv/25Q3/, kraken_csv/25Q4/). Window updated to 2025 H2 (Section 17).
 ├── data/
 │   ├── store.py                       — FxStore, incl. get_candles_multi() (Section 15, verified)
 │   └── run_store.py                   — RunStore (Section 15, verified on SQLite)
@@ -135,13 +137,15 @@ fx_trader/
 └── .gitignore                          — excludes data/*.db and credential files (Section 15)
 ```
 
-**Not in git**: `data/sandbox_2026h1.db` — deliberately, per `.gitignore`. Lives only on the person's machine, uploaded directly to whichever chat needs it.
+**Not in git**: `data/sandbox_2025h2.db` (renamed from `sandbox_2026h1.db` — see Section 17) — deliberately, per `.gitignore`. Lives only on the person's machine, uploaded directly to whichever chat needs it.
 
 ---
 
 ## 6. VERIFICATION STATUS
 
 **The single most important section not to lose fidelity on.**
+
+**⚠️ The specific instrument/candle counts below (3,075; 4,344) describe the abandoned 2026 H1 window and are now stale numbers - don't expect them to match a 2025 H2 run. What DOES still hold: `OandaBroker.fetch_candles`'s two bug fixes are window-independent and remain valid; Kraken's live-API limitation is a permanent exchange constraint, not window-specific. Section 17 has current status.**
 
 ### ✅ Actually run and verified
 - Backtest engine cost math, `FxStore`/`RunStore` on SQLite, `get_candles_multi()`, `CcxtBroker`'s logic against a fake exchange, `BrokerRouter`, walk-forward/sensitivity/bootstrap math — unchanged from earlier sessions.
@@ -167,7 +171,9 @@ Unchanged — the person's standing preferences (quoted verbatim in earlier sect
 
 ## 8. OPEN THREADS
 
-- **Kraken GBP-crypto ingestion — actively blocked, the most concrete open item.** `ingest_kraken_gbp_csv.py` found 0 rows for all 4 pairs. Leading hypothesis: the "Complete Data" base archive predates 2026, and Kraken's quarterly "Incremental Updates" (same support page, separate folder) need adding on top. The script now accepts a *list* of filenames per instrument specifically to make this easy once confirmed. **Next action: `tail -3` on one of the CSVs to see its actual last date, then get matching incremental file(s) if needed.**
+**See Section 17 for the current top-of-list item (sandbox window changed to 2025 H2 - neither FX/Binance nor Kraken data has been fetched for this window yet).**
+
+- **Kraken GBP-crypto ingestion — resolved differently than expected.** The suspected "stale base snapshot" issue (previous hypothesis) turned out to be moot - the window itself moved to 2025 H2 specifically because Kraken's Q2 2026 quarterly update wasn't published yet. `ingest_kraken_gbp_csv.py` now targets 25Q3+25Q4 quarterly incremental files directly (not the base archive), read from per-quarter subfolders. Not yet run for this window.
 - **Tier 0–4 validation orchestrator** — not built. Genuinely blocked on real data being fully ready (12/16 so far), not just deferred on principle.
 - **Cross-pair/cartesian comparator + statistical pairs trading** — deferred to a dedicated future session. **New**: reasoned expectation this needs finer-than-hourly granularity (mean-reversion signals decay faster than trend signals — different reasoning from "crypto is fast," which was separately pushed back on). Two things to have ready before that session: (1) multi-instrument timestamp/candle-boundary alignment matters more at finer granularity across OANDA/Binance/Kraken's differing conventions; (2) Kraken's live-API depth limit will very likely resurface for finer-granularity historical data too.
 - **New product idea: tiered subscription refresh/data-capture rates** — proposed tiers ~5min / ~30sec-1min / ~1sec. **Caveat, not yet resolved into a design**: refresh rate (infrastructure) and signal granularity (strategy design) are different axes — faster polling alone doesn't improve profitability unless the strategy itself is redesigned for that granularity, and live granularity must match what was validated or the backtest stops representing reality. Finer granularity also means more trades means more cost drag (already evidenced: crypto's worse synthetic result vs FX at H1) — untested assumption, not a given.
@@ -178,10 +184,13 @@ Unchanged — the person's standing preferences (quoted verbatim in earlier sect
 
 ## 9. IMMEDIATE NEXT STEP
 
-1. **Resolve the Kraken ingestion gap.** Check the base CSVs' actual last date (`tail -3`), get incremental files if needed, re-run `ingest_kraken_gbp_csv.py`, confirm all 16 instruments show real coverage.
-2. **Only once genuinely 16/16**: run the SMA crossover strategy against the sandbox through `VALIDATION_HIERARCHY.md`'s tiers, cheapest first — don't skip to sensitivity/walk-forward/bootstrap before Tier 0/1 has filtered anything.
-3. **Before trusting `get_quote`/`place_market_order`**: test them explicitly, given `fetch_candles`'s two-bug history in the same file.
-4. Only after that, in a dedicated new session, start the cross-pair/cartesian/pairs-trading work — with the granularity expectation from this session in hand already.
+**See Section 17 — this list is superseded by the window change.**
+
+1. Re-run `fetch_sandbox_data.py` for the new 2025 H2 window (FX + USD-crypto) - code unchanged/still fixed, just new dates, not yet executed.
+2. Run `ingest_kraken_gbp_csv.py` with the 25Q3/25Q4 quarterly files in their subfolders.
+3. Once genuinely 16/16 for 2025 H2: run the SMA crossover strategy through `VALIDATION_HIERARCHY.md`'s tiers, cheapest first.
+4. Before trusting `get_quote`/`place_market_order`: test them explicitly, given `fetch_candles`'s two-bug history in the same file.
+5. Only after that, in a dedicated new session, start the cross-pair/cartesian/pairs-trading work.
 
 ---
 
@@ -264,3 +273,38 @@ Separately suggested, and affirmed as plausible rather than pushed back on — d
 ### Session-end honest status
 
 12 of 16 sandbox instruments confirmed with real, spot-checked data. 4 (Kraken GBP-crypto) blocked on an unresolved data-availability question, actively being diagnosed. Two real bugs found and fixed in `OandaBroker.fetch_candles`, both confirmed working by real re-execution. One data-fidelity issue found and not fixed (`ccxt_broker.py` volume truncation, low priority). Two product-design discussions had and recorded, neither resolved into an implementation. The validation hierarchy, `RunStore`, and every analysis tool from earlier sessions remain completely unexercised against real data — the actual next body of work, blocked only on closing the Kraken gap.
+
+**Immediately superseded by Section 17, written the same day** — the "blocked on Kraken" diagnosis above turned out to have a cleaner resolution than expected: not a stale-snapshot problem to dig out of, but a scheduling reality (Kraken's Q2 2026 update genuinely isn't out yet) that was easiest to solve by moving the whole sandbox window earlier rather than waiting.
+
+---
+
+## 17. SANDBOX WINDOW CHANGED: 2026 H1 → 2025 H2 (added the same day as Section 16)
+
+### What changed and why
+
+Investigating Section 16's "0 rows" Kraken mystery further, the person checked Kraken's actual incremental-update folder directly rather than continuing to guess: **Kraken's Q2 2026 quarterly update isn't published yet.** That's the real, complete explanation — nothing wrong with the parser, the base-snapshot-staleness theory from Section 16 wasn't the actual cause (or at least isn't the one that matters now).
+
+Rather than wait on Kraken's publishing schedule, **the sandbox window moved to 2025 H2 (2025-07-01 to 2025-12-31)** — a different but equally valid 6-month window, chosen deliberately over the alternative of 2025 Q4 + 2026 Q1: using the slightly older 25Q3+25Q4 quarters now **deliberately leaves 26Q1 (already published) unused and available**, as ready-to-go runway for extending the sandbox forward later (e.g. toward a rolling or longer window) rather than using up the most recent available quarter immediately. The person also confirmed Kraken's incremental files go back to 23Q1 at the earliest, though this ended up not mattering for the final approach - see below.
+
+### File-naming collision, and the resolution
+
+Kraken's quarterly incremental downloads all use identical filenames per pair regardless of which quarter they cover — every quarter's `ETHGBP_60.csv` is named exactly that, so extracting two different quarters' downloads into the same folder means the second silently overwrites the first. **Resolution: extract each quarter into its own subfolder** (`kraken_csv/25Q3/`, `kraken_csv/25Q4/`), not manual renaming — renaming by hand was explicitly rejected as too easy to get wrong (mislabeling which file is which quarter). `ingest_kraken_gbp_csv.py`'s `KRAKEN_FILES` now stores subfolder-qualified relative paths (e.g. `"25Q3/ETHGBP_60.csv"`) rather than bare filenames.
+
+**A simplification worth being explicit about**: `ingest_kraken_gbp_csv.py` now targets the two quarter-specific incremental files (25Q3 + 25Q4) directly, and does NOT also require Kraken's separate base "Complete Data" archive for this window. Each quarterly incremental is expected to be self-contained for its own quarter - that's the defined purpose of a quarterly update. This sidesteps the Section 16 "where does the base snapshot end" question entirely for this specific window; it may still matter for a different future window.
+
+### What changed in the codebase
+
+- `fetch_sandbox_data.py`: `START`/`END` updated to 2025-07-01/2025-12-31. `DB_PATH` renamed to `data/sandbox_2025h2.db`. **Not yet re-run** — the two OANDA bug fixes from Section 16 are code-level and window-independent, so this should work on the first attempt this time, but that's an expectation, not yet a verified fact for this specific window.
+- `ingest_kraken_gbp_csv.py`: `START`/`END` updated to match. `DB_PATH` updated to match. `KRAKEN_FILES` restructured to subfolder-qualified paths for `25Q3`/`25Q4`. Parser logic itself unchanged and re-verified against the same real sample data after the refactor - still correct.
+- Sections 4, 5, 6, 8, 9 above are marked superseded on their specific dates/numbers rather than rewritten in place, to preserve Section 16's history as an accurate record of what was actually found and fixed that day - all of which remains true, just not describing the current window.
+
+### Status: nothing has been fetched for 2025 H2 yet
+
+This is a clean restart on data, not a continuation. The 12/16-confirmed figure from Section 16 was for 2026 H1, now abandoned. **As of this section being written: 0 of 16 instruments confirmed for 2025 H2.** The code is in a better starting position than it was for the original 2026 H1 attempt (both OANDA bugs already fixed, Kraken subfolder convention already solved before the first real attempt rather than discovered through failure), so the actual fetch is expected to go more smoothly - but "expected to" is not "verified to," and should be re-confirmed the same way everything else in this project has been: by actually running it and checking the real output, not assuming success from a cleaner setup.
+
+### Immediate next step (supersedes Section 9)
+
+1. Run `fetch_sandbox_data.py` for 2025 H2 (FX + USD-crypto) - first attempt at this window.
+2. Extract Kraken's 25Q3 and 25Q4 quarterly incremental downloads into `kraken_csv/25Q3/` and `kraken_csv/25Q4/` respectively, then run `ingest_kraken_gbp_csv.py`.
+3. Verify genuinely 16/16 real, sane data for 2025 H2 - spot-check values, don't just trust row counts.
+4. From there, Section 9's original plan resumes unchanged: validation hierarchy tiers, then `get_quote`/`place_market_order` testing, then the cartesian/pairs-trading session.
