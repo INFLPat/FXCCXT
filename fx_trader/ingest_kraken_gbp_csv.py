@@ -1,35 +1,58 @@
 """
 ingest_kraken_gbp_csv.py
 
-Loads the 4 Kraken bulk-historical OHLCVT CSVs (BTC/ETH/XRP/LTC vs GBP) into
-the same data/sandbox_2026h1.db the OANDA/Binance fetch already populated -
-filtered down to the same 2026-01-01 to 2026-06-30 window everything else
-uses, so the whole sandbox stays one consistent, comparable dataset.
+Loads Kraken bulk-historical OHLCVT CSVs (BTC/ETH/XRP/LTC vs GBP) into the
+same sandbox database the OANDA/Binance fetch populates - filtered to the
+same window everything else in the sandbox uses.
+
+WINDOW: 2025-07-01 to 2025-12-31 (25H2 = Q3+Q4 2025), not the originally
+planned 2026 H1. Changed because Kraken's Q2 2026 quarterly incremental
+update isn't published yet as of this window being chosen - 25H2 uses only
+already-published quarters, and deliberately leaves 26Q1 (also already
+available) unused for now, as a ready-to-go extension for a future,
+longer/rolling sandbox window rather than using it up immediately.
+
+FILE ORGANISATION: Kraken's quarterly incremental downloads all use the same
+filename per pair regardless of which quarter they cover (e.g. every
+quarter's Ethereum-vs-GBP file is called ETHGBP_60.csv) - extracting two
+different quarters into the same folder means the second overwrites the
+first. Fix: extract each quarter's download into ITS OWN subfolder named
+after the quarter, and reference full subfolder-qualified paths below -
+no renaming needed, no risk of mixing quarters up.
+
+    kraken_csv/
+    ├── 25Q3/
+    │   ├── XBTGBP_60.csv
+    │   ├── ETHGBP_60.csv
+    │   ├── XRPGBP_60.csv
+    │   └── LTCGBP_60.csv
+    └── 25Q4/
+        ├── XBTGBP_60.csv
+        ├── ETHGBP_60.csv
+        ├── XRPGBP_60.csv
+        └── LTCGBP_60.csv
 
 Kraken's bulk CSV format (confirmed from a real sample, not assumed):
     unix_timestamp,open,high,low,close,volume,trades
-No header row. Same format across all pairs/intervals per Kraken's own
-documentation - only the "_60.csv" (60-minute = hourly) file is needed here,
-matching the H1/1h granularity used everywhere else in this sandbox.
+No header row. Each quarterly file is expected to be self-contained for its
+own quarter (that's the point of a quarterly "incremental update"), so this
+script does NOT also require Kraken's separate base "Complete Data" archive
+for this window - just the two quarter-specific files per instrument.
 
-Like Binance/ccxt, Kraken's historical data is a single trade-price series,
-not separate bid/ask - so bid=ask=the traded price here too, consistent
-with how brokers/ccxt_broker.py already handles this for USD-quoted crypto.
-
-Volume is stored as the TRUE float value from the CSV, not truncated to an
-int - unlike ccxt_broker.py's existing int(vol) cast (a separate, known,
-low-priority precision loss for the Binance-sourced rows, harmless there
-since those volumes are in the hundreds, but would be destructive here:
-Kraken's actual GBP-pair volumes are frequently well under 1 - see the
-sample in the docstring below, several rows are 0.06, 0.2, 0.405 BTC -
-truncating those to int would zero them out entirely.
+Like Binance/ccxt, bid=ask=the traded price (no separate historical bid/ask
+from Kraken, same as everywhere else crypto is handled in this project).
+Volume is stored as the TRUE float value, not truncated to an int - unlike
+ccxt_broker.py's existing int(vol) cast (a separate, known, low-priority
+precision loss for the Binance-sourced rows - harmless there since those
+volumes are in the hundreds, but would be destructive here: Kraken's GBP-pair
+volumes are frequently well under 1).
 
 SETUP:
-1. Place the 4 CSVs in a folder named kraken_csv/ next to this script
-   (i.e. inside fx_trader/, alongside data/sandbox_2026h1.db).
-2. If any of the filenames below don't match what you actually have -
-   the script tells you exactly which one, rather than failing silently -
-   just edit the KRAKEN_FILES dict to match.
+1. Extract each quarter's Kraken download into kraken_csv/25Q3/ and
+   kraken_csv/25Q4/ respectively (see layout above).
+2. If any filename below doesn't match what you actually have, the script
+   says exactly which file/quarter is missing rather than failing silently -
+   edit KRAKEN_FILES to match.
 3. Run: python3 ingest_kraken_gbp_csv.py
 """
 
@@ -41,29 +64,20 @@ from data.store import Candle, FxStore
 
 CSV_DIR = Path("kraken_csv")
 
-# instrument name (matching the BTC/USDT-style convention already used for
-# the USD-quoted crypto pairs) -> list of filenames to read for it. A list,
-# not a single filename, because Kraken's "Complete Data" archive is a
-# point-in-time snapshot (that's exactly why Kraken separately offers
-# quarterly "Incremental Updates" for anyone who's already downloaded the
-# base file) - if the base snapshot predates 2026, none of our target window
-# will be in it at all, and the real data will only exist in one or more
-# incremental update files layered on top. Add filenames here as needed;
-# every file listed for an instrument gets read and merged before filtering
-# to the 2026-01-01 - 2026-06-30 window, so order doesn't matter and
-# duplicate/overlapping rows between files are harmless (upsert_candles
-# de-dupes by timestamp downstream anyway).
+# instrument name -> list of quarter-subfolder-qualified filenames to read
+# and merge for it. Order doesn't matter; upsert_candles de-dupes by
+# timestamp downstream if quarters ever overlap.
 KRAKEN_FILES = {
-    "BTC/GBP": ["XBTGBP_60.csv"],
-    "ETH/GBP": ["ETHGBP_60.csv"],
-    "XRP/GBP": ["XRPGBP_60.csv"],
-    "LTC/GBP": ["LTCGBP_60.csv"],
+    "BTC/GBP": ["25Q3/XBTGBP_60.csv", "25Q4/XBTGBP_60.csv"],
+    "ETH/GBP": ["25Q3/ETHGBP_60.csv", "25Q4/ETHGBP_60.csv"],
+    "XRP/GBP": ["25Q3/XRPGBP_60.csv", "25Q4/XRPGBP_60.csv"],
+    "LTC/GBP": ["25Q3/LTCGBP_60.csv", "25Q4/LTCGBP_60.csv"],
 }
 
 GRANULARITY = "1h"  # matches the Binance-side crypto granularity label
-START = datetime(2026, 1, 1, tzinfo=timezone.utc)
-END = datetime(2026, 6, 30, 23, 59, 59, tzinfo=timezone.utc)
-DB_PATH = "data/sandbox_2026h1.db"
+START = datetime(2025, 7, 1, tzinfo=timezone.utc)
+END = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+DB_PATH = "data/sandbox_2025h2.db"
 
 
 def load_kraken_csv(path: Path, instrument: str) -> list[Candle]:
@@ -96,8 +110,8 @@ def main():
         for filename in filenames:
             path = CSV_DIR / filename
             if not path.exists():
-                print(f"  {instrument}: FILE NOT FOUND at {path} - check the actual filename "
-                      f"in kraken_csv/ and update KRAKEN_FILES if it differs from '{filename}'")
+                print(f"  {instrument}: FILE NOT FOUND at {path} - check the quarter subfolder "
+                      f"and filename, or update KRAKEN_FILES if it differs from '{filename}'")
                 continue
             any_file_found = True
             try:
@@ -109,9 +123,7 @@ def main():
             continue
         if not all_candles:
             print(f"  {instrument}: parsed {len(filenames)} file(s) but found 0 rows in the "
-                  f"2026-01-01 to 2026-06-30 window - the file(s) likely don't extend into 2026 yet "
-                  f"(check with: tail -3 kraken_csv/{filenames[0]}). If so, add the matching quarterly "
-                  f"incremental-update file(s) to KRAKEN_FILES for this instrument.")
+                  f"2025-07-01 to 2025-12-31 window - double check the files are the right quarters")
             continue
         n = store.upsert_candles(all_candles)
         print(f"  {instrument}: {len(all_candles)} candles in range across {len(filenames)} file(s), {n} rows written")
