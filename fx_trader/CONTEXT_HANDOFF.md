@@ -298,9 +298,9 @@ Kraken's quarterly incremental downloads all use identical filenames per pair re
 - `ingest_kraken_gbp_csv.py`: `START`/`END` updated to match. `DB_PATH` updated to match. `KRAKEN_FILES` restructured to subfolder-qualified paths for `25Q3`/`25Q4`. Parser logic itself unchanged and re-verified against the same real sample data after the refactor - still correct.
 - Sections 4, 5, 6, 8, 9 above are marked superseded on their specific dates/numbers rather than rewritten in place, to preserve Section 16's history as an accurate record of what was actually found and fixed that day - all of which remains true, just not describing the current window.
 
-### Status: nothing has been fetched for 2025 H2 yet
+### Status: 16 of 16 confirmed for 2025 H2 - sandbox complete
 
-This is a clean restart on data, not a continuation. The 12/16-confirmed figure from Section 16 was for 2026 H1, now abandoned. **As of this section being written: 0 of 16 instruments confirmed for 2025 H2.** The code is in a better starting position than it was for the original 2026 H1 attempt (both OANDA bugs already fixed, Kraken subfolder convention already solved before the first real attempt rather than discovered through failure), so the actual fetch is expected to go more smoothly - but "expected to" is not "verified to," and should be re-confirmed the same way everything else in this project has been: by actually running it and checking the real output, not assuming success from a cleaner setup.
+All 16 instruments verified with real, sane data (not just trusted row counts): 8 FX (3,141 candles each), 4 USD-crypto (4,416 each, exact match to 184 days × 24h), 4 GBP-crypto (4,409-4,410 each - Kraken only records hours with an actual trade, so a handful of low-liquidity hours are legitimately absent, not a bug). Cross-validated the GBP-crypto data against the independently-sourced USD-crypto and FX data via simple cross-rate arithmetic (e.g. BTC/USDT ÷ GBP_USD ≈ BTC/GBP, checked and close) - three independent sources agreeing is strong evidence of correctness, not just plausible shape. Float volume precision confirmed preserved for Kraken data as designed.
 
 ### Immediate next step (supersedes Section 9)
 
