@@ -66,7 +66,11 @@ FX_GRANULARITY = "H1"
 # the availability check below will skip and warn on anything not listed
 # rather than guessing, so swapping the 4th asset back is a one-line change.
 CRYPTO_USD = ["BTC/USDT", "ETH/USDT", "XRP/USDT", "LTC/USDT"]   # via Binance
-CRYPTO_GBP = ["BTC/GBP", "ETH/GBP", "XRP/GBP", "LTC/GBP"]        # via Kraken
+# Crypto vs GBP is NOT fetched here. Kraken's live OHLC API only serves a
+# rolling recent window regardless of the date requested - this call would
+# always return 0 candles, permanently, for any historical window. GBP-crypto
+# is handled entirely by ingest_kraken_gbp_csv.py, which reads Kraken's
+# separate quarterly bulk CSV exports instead - see that script.
 CRYPTO_GRANULARITY = "1h"
 
 DB_PATH = "data/sandbox_2025h2.db"
@@ -117,16 +121,17 @@ def main():
 
     fetch_fx(store)
     fetch_crypto(store, "binance", CRYPTO_USD, "USD")
-    fetch_crypto(store, "kraken", CRYPTO_GBP, "GBP")
+    # GBP-crypto: see ingest_kraken_gbp_csv.py, not fetched here (see module note above)
 
     print("\n=== Coverage check ===")
     all_instruments = [(p, FX_GRANULARITY) for p in FX_PAIRS] + \
-                       [(s, CRYPTO_GRANULARITY) for s in CRYPTO_USD + CRYPTO_GBP]
+                       [(s, CRYPTO_GRANULARITY) for s in CRYPTO_USD]
     for instrument, granularity in all_instruments:
         coverage = store.coverage(instrument, granularity)
         print(f"  {instrument} ({granularity}): {coverage or 'NO DATA WRITTEN'}")
 
-    print(f"\nDone. Upload {DB_PATH} back to Claude to continue.")
+    print(f"\nDone. Upload {DB_PATH} back to Claude to continue "
+          f"(GBP-crypto still needs ingest_kraken_gbp_csv.py run separately).")
 
 
 if __name__ == "__main__":
