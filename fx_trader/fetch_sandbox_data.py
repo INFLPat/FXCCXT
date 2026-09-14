@@ -26,7 +26,7 @@ SETUP (run from inside fx_trader/, i.e. alongside run_backtest_demo.py):
 
     python fetch_sandbox_data.py
 
-Produces: data/sandbox_2026h1.db (SQLite). Upload this file back once it's
+Produces: data/sandbox_2025h2.db (SQLite). Upload this file back once it's
 finished, to continue the analysis.
 
 GOTCHA handled explicitly: CcxtBroker defaults to sandbox=True (testnet),
@@ -44,8 +44,14 @@ from brokers.oanda import OandaBroker
 from data.store import FxStore
 
 # --- window: fixed 6-month sandbox, fully historical, no partial-candle risk ---
-START = datetime(2026, 1, 1, tzinfo=timezone.utc)
-END = datetime(2026, 6, 30, 23, 59, 59, tzinfo=timezone.utc)
+# 25H2 (Q3+Q4 2025), not the originally planned 2026 H1 - changed because
+# Kraken's Q2 2026 quarterly incremental update isn't published yet as of
+# this window being chosen. 25H2 uses only already-published Kraken quarters
+# and deliberately leaves 26Q1 (also already available) unused for now, as
+# ready-to-go runway for a future, longer/rolling sandbox rather than using
+# it up immediately. See ingest_kraken_gbp_csv.py for the Kraken side.
+START = datetime(2025, 7, 1, tzinfo=timezone.utc)
+END = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
 
 # --- instruments -------------------------------------------------------------
 # FX: GBP/USD/EUR-leaning majors + crosses (UK-based business - see memory note)
@@ -63,7 +69,7 @@ CRYPTO_USD = ["BTC/USDT", "ETH/USDT", "XRP/USDT", "LTC/USDT"]   # via Binance
 CRYPTO_GBP = ["BTC/GBP", "ETH/GBP", "XRP/GBP", "LTC/GBP"]        # via Kraken
 CRYPTO_GRANULARITY = "1h"
 
-DB_PATH = "data/sandbox_2026h1.db"
+DB_PATH = "data/sandbox_2025h2.db"
 
 
 def fetch_fx(store: FxStore):
