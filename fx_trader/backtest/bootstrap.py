@@ -3,26 +3,33 @@ backtest/bootstrap.py
 
 Bootstrap resampling / Monte Carlo analysis on a backtest's completed trades.
 
-RESAMPLE (with replacement): if the same underlying process generated a
-fresh batch of trades statistically like these, what range of outcomes is
-plausible? Produces a confidence interval around total return instead of
-just the one number this historical path happened to produce.
+RESAMPLE (with replacement) vs SHUFFLE (permutation) - see original design
+notes below, unchanged this session.
 
-SHUFFLE (permutation, no replacement): the same trades, reordered. Total P&L
-is order-invariant, but max drawdown is NOT - isolates how much of the
-reported drawdown is about the trades themselves vs. the luck of their order.
-Because of order-invariance, total_return_pct/ending_balance/win_rate_pct are
-IDENTICAL across every shuffle iteration by construction - verified as an
-explicit invariant in tests/test_bootstrap.py, not just asserted here.
+EXTENDED THIS SESSION: TRACKED_METRICS grew from 5 fields to include most
+of the new metrics.py additions, riding through the SAME resample/shuffle
+loop that already existed - genuinely free, no new backtest runs.
 
-Both operate on BacktestResult.trades directly - real completed trades, not
-a statistical model of them - run through the same compute_metrics() used
-everywhere else in this project.
+DELIBERATELY NOT ADDED, and why (same reasoning that already excluded an
+annualized Sharpe here, now applied consistently to its new siblings):
+- sortino_ratio, calmar_ratio, omega_ratio: all annualized against
+  periods_per_year, which assumes a fixed time interval between
+  equity_curve points. _build_synthetic_result() gives one equity point
+  PER TRADE, not per candle - "periods_per_year" has no coherent meaning
+  on that curve, exactly like the Sharpe case this file already documented.
+- exposure_pct: needs BacktestResult.periods_in_market, which
+  _build_synthetic_result() never sets (defaults to 0) - reporting it
+  would silently read as a constant, meaningless 0% every iteration.
+- buy_hold_return_pct / alpha_vs_buy_hold_pct: need the original candles,
+  which aren't available at this trade-only stage - always None here.
+- still_in_drawdown_at_end: a bool, not a natural fit for the
+  percentile/CI numeric API the rest of this module is built around.
 
-Deliberately NOT reported: an annualized Sharpe ratio per iteration.
-compute_metrics()'s Sharpe assumes a fixed time interval between
-equity_curve points, true for the original candle-level curve but
-meaningless for this trade-resolution curve.
+max_drawdown_duration / avg_drawdown_duration / ulcer_index ARE included
+despite being nominally "time-based" - they're computed from the same
+trade-resolution equity curve max_drawdown_pct already used here, so
+duration means "trades", not periods/candles. Same caveat that already
+applied to max_drawdown_pct, extended consistently rather than singled out.
 """
 
 import math
@@ -32,7 +39,14 @@ from dataclasses import dataclass, field
 from backtest.engine import BacktestResult, Trade
 from backtest.metrics import compute_metrics
 
-TRACKED_METRICS = ("total_return_pct", "max_drawdown_pct", "win_rate_pct", "profit_factor", "ending_balance")
+TRACKED_METRICS = (
+    "total_return_pct", "max_drawdown_pct", "win_rate_pct", "profit_factor", "ending_balance",
+    "trade_expectancy", "trade_expectancy_pct", "payoff_ratio", "recovery_factor",
+    "ulcer_index", "max_drawdown_duration", "avg_drawdown_duration",
+    "var_95", "cvar_95", "tail_ratio", "skewness", "kurtosis", "kelly_fraction",
+    "cost_drag_pct", "avg_trade_duration_hours",
+    "max_consecutive_wins", "max_consecutive_losses",
+)
 
 
 def _build_synthetic_result(trades: list[Trade], starting_balance: float) -> BacktestResult:
@@ -52,24 +66,23 @@ def _build_synthetic_result(trades: list[Trade], starting_balance: float) -> Bac
 
 def _extract(trades: list[Trade], starting_balance: float) -> dict[str, float | None]:
     result = _build_synthetic_result(trades, starting_balance)
-    m = compute_metrics(result, periods_per_year=252)  # periods_per_year unused - Sharpe is discarded
-    return {
-        "total_return_pct": m.total_return_pct,
-        "max_drawdown_pct": m.max_drawdown_pct,
-        "win_rate_pct": m.win_rate_pct,
-        "profit_factor": m.profit_factor,
-        "ending_balance": result.ending_balance,
-    }
+    # periods_per_year is a required compute_metrics() arg but unused by
+    # anything in TRACKED_METRICS - nothing tracked here is annualized,
+    # see module docstring for why.
+    m = compute_metrics(result, periods_per_year=252)
+    values = m.as_dict()
+    values["ending_balance"] = result.ending_balance
+    return {name: values[name] for name in TRACKED_METRICS}
 
 
 @dataclass
 class BootstrapResult:
-    method: str            # "resample" or "shuffle"
+    method: str
     n_iterations: int
     n_trades: int
     starting_balance: float
-    observed: dict[str, float | None]             # metric_name -> value from the ACTUAL, unresampled trade order
-    distributions: dict[str, list[float | None]]  # metric_name -> one value per iteration
+    observed: dict[str, float | None]
+    distributions: dict[str, list[float | None]]
 
     def _clean(self, metric: str) -> list[float]:
         if metric not in self.distributions:
@@ -77,7 +90,6 @@ class BootstrapResult:
         return [v for v in self.distributions[metric] if v is not None]
 
     def percentile(self, metric: str, p: float) -> float:
-        """p in [0, 100]. Dependency-free percentile via sorted interpolation."""
         values = self._clean(metric)
         if not values:
             raise ValueError(f"no valid (non-None) values for '{metric}' to compute a percentile from")
@@ -90,7 +102,6 @@ class BootstrapResult:
         return s[lo] + (s[hi] - s[lo]) * (rank - lo)
 
     def confidence_interval(self, metric: str, level: float = 0.90) -> tuple[float, float]:
-        """e.g. level=0.90 gives the 5th-95th percentile range."""
         tail = (1 - level) / 2 * 100
         return self.percentile(metric, tail), self.percentile(metric, 100 - tail)
 
@@ -104,7 +115,6 @@ class BootstrapResult:
         return math.sqrt(sum((v - m) ** 2 for v in values) / len(values))
 
     def probability_below(self, metric: str, threshold: float) -> float:
-        """Fraction of iterations where `metric` fell below `threshold`, as a percentage."""
         values = self._clean(metric)
         return sum(1 for v in values if v < threshold) / len(values) * 100
 
@@ -112,11 +122,6 @@ class BootstrapResult:
         return self.probability_below("total_return_pct", 0.0)
 
     def observed_percentile_rank(self, metric: str) -> float | None:
-        """What fraction of the resampled/shuffled distribution falls BELOW
-        the actual observed value? 50% is typical; far from 50% means the
-        real historical path was unusual relative to the alternatives this
-        method generated. None if the observed value itself is undefined
-        (e.g. profit_factor with no losing trades)."""
         obs = self.observed.get(metric)
         if obs is None:
             return None
@@ -157,8 +162,7 @@ class BootstrapResult:
         ]
         rank = self.observed_percentile_rank("max_drawdown_pct")
         if rank is not None:
-            verdict = self._drawdown_rank_verdict(rank)
-            lines.append(f"Observed drawdown sits at the {rank:.0f}th percentile of all reorderings: {verdict}")
+            lines.append(f"Observed drawdown sits at the {rank:.0f}th percentile of all reorderings: {self._drawdown_rank_verdict(rank)}")
         return lines
 
     @staticmethod
@@ -172,29 +176,15 @@ class BootstrapResult:
 
 
 def run_bootstrap(
-    trades: list[Trade],
-    starting_balance: float,
-    method: str = "resample",
-    n_iterations: int = 5000,
-    sample_size: int | None = None,
-    seed: int | None = None,
+    trades: list[Trade], starting_balance: float, method: str = "resample",
+    n_iterations: int = 5000, sample_size: int | None = None, seed: int | None = None,
 ) -> BootstrapResult:
-    """
-    trades: typically BacktestResult.trades from a real backtest. Open
-        trades are dropped - only closed trades have a realized P&L.
-    method: "resample" draws `sample_size` trades WITH replacement. "shuffle"
-        permutes all trades WITHOUT replacement - sample_size is ignored.
-    sample_size: only used by "resample"; defaults to the original trade count.
-    seed: fixes the RNG for reproducible results.
-    """
     if method not in ("resample", "shuffle"):
         raise ValueError(f"method must be 'resample' or 'shuffle', got '{method}'")
 
     closed_trades = [t for t in trades if not t.is_open]
     if len(closed_trades) < 2:
-        raise ValueError(
-            f"Need at least 2 closed trades to run bootstrap analysis, got {len(closed_trades)}."
-        )
+        raise ValueError(f"Need at least 2 closed trades to run bootstrap analysis, got {len(closed_trades)}.")
 
     rng = random.Random(seed)
     n = len(closed_trades)
@@ -206,7 +196,7 @@ def run_bootstrap(
     for _ in range(n_iterations):
         if method == "resample":
             sample = [closed_trades[rng.randrange(n)] for _ in range(draw_size)]
-        else:  # shuffle
+        else:
             sample = closed_trades[:]
             rng.shuffle(sample)
 
@@ -224,8 +214,6 @@ def run_bootstrap_from_result(
     result: BacktestResult, method: str = "resample", n_iterations: int = 5000,
     sample_size: int | None = None, seed: int | None = None,
 ) -> BootstrapResult:
-    """Convenience wrapper: unpacks trades/starting_balance from a
-    BacktestResult you already have, e.g. straight from engine.run()."""
     return run_bootstrap(
         result.trades, result.starting_balance, method=method,
         n_iterations=n_iterations, sample_size=sample_size, seed=seed,
