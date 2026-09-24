@@ -6,6 +6,20 @@
 fx_trader/data/*.db
 fx_trader/data/*.db-journal
 
+# Raw Kraken bulk-CSV exports (ingest_kraken_gbp_csv.py's input, NOT
+# fx_trader/data/ - a sibling directory) - same redistribution-
+# restriction reasoning as data/*.db above. Pre-existing gap, not
+# something this session introduced - never excluded until now.
+fx_trader/kraken_csv/
+
+# Local/generated chart outputs (visualize_period_comparison.py) - same
+# reasoning as data/*.db above, minus the redistribution concern: these
+# are regenerable from code + data, would bloat git history with binary
+# PNG/HTML diffs on every re-run, and aren't meant to be hand-maintained.
+# Keep locally / re-upload to a chat if a specific snapshot matters.
+fx_trader/charts/*.png
+fx_trader/charts/*.html
+
 # Credentials - never commit these, however you choose to set them locally
 .env
 *.env
