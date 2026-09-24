@@ -111,10 +111,11 @@ revisiting once this grid is built.
 
 ## 3. Trend vs. mean-reversion grouping
 
-Measured (synthetic data, one instrument, illustrative only - re-check on
-real data): SMA vs. Bollinger equity-curve correlation was **-0.61**,
-RSI vs. Bollinger **+0.34**, MACD oddly uncorrelated with everything
-(different trade frequency - 251 vs 120 vs 21 vs 73 trades in that run).
+Measured (synthetic data, one instrument, illustrative only - re-checked on
+real data, see Section 4.2 below) SMA vs. Bollinger equity-curve
+correlation was **-0.61**, RSI vs. Bollinger **+0.34**, MACD oddly
+uncorrelated with everything (different trade frequency - 251 vs 120 vs 21
+vs 73 trades in that run).
 
 The relationship is genuinely two different things at two timescales:
 - **Moment-to-moment, within one persistent trend: opposed.** An
@@ -141,12 +142,17 @@ The relationship is genuinely two different things at two timescales:
   back to once A and B have real performance data to justify the added
   complexity and validation surface.
 
+Real-data correlations (Section 4.2) confirmed this split is genuine, not
+a synthetic-data coincidence - see below.
+
 ## 4. Weighting source (SETTLED mechanism - CRITICAL DEPENDENCY, see 4.1)
 
 **Decision**: weight comes from the validation hierarchy's own results for
 that (strategy, instrument) pair - not equal weighting, not hand-picked.
 
-Strawman formula (a starting point to validate, not final):
+Strawman formula (a starting point to validate, not final - **see Section
+4.2's real-data check: a real defect was found and fixed in the tier-4
+handling of this formula**):
 
 ```
 weight(strategy, instrument) = 0                                     if it never cleared Tier 1 here
@@ -158,25 +164,35 @@ weight(strategy, instrument) = base_metric(strategy, instrument)
 Tier 4 = 1.0 (strawman values) - a strategy that only cleared the cheapest
 gate shouldn't carry the same weight as one that survived bootstrapping.
 
-### 4.1 THE CRITICAL BLOCKING DEPENDENCY - read this before starting Phase 1
+### 4.1 RESOLVED THIS SESSION — see CONTEXT_HANDOFF.md Section 4d for results
 
-**This weighting scheme requires real validation-hierarchy output to exist.
-It currently does not, for any of the five strategies.** As of this
-document: 0/16 real sandbox instruments have EVER produced a Tier 4
-survivor (SmaCrossoverStrategy was run and failed everywhere -
-`CONTEXT_HANDOFF.md` Section 4). RsiStrategy, MacdStrategy,
-RsiMacdConfluenceStrategy, and BollingerBandsStrategy have **never been run
+All five strategies have now been run against the real 16-instrument
+sandbox. 7 (strategy, instrument) pairs cleared Tier 4 - all
+`RsiStrategy` or `RsiMacdConfluenceStrategy`, all on JPY crosses or
+Litecoin pairs (GBP_JPY, USD_JPY, LTC/USDT, LTC/GBP). `SmaCrossoverStrategy`
+and `MacdStrategy` and `BollingerBandsStrategy` all produced 0/16. Full
+breakdown, the param grids used (none existed before that session), and
+the Section 4.2 checks below: `CONTEXT_HANDOFF.md` Section 4d. The rest of
+this subsection is kept as the historical record of why the run was
+blocking, not as a current statement of status.
+
+**Originally: this weighting scheme requires real validation-hierarchy
+output to exist. It currently does not, for any of the five strategies.**
+As of the document's original writing: 0/16 real sandbox instruments had
+EVER produced a Tier 4 survivor (SmaCrossoverStrategy was run and failed
+everywhere - `CONTEXT_HANDOFF.md` Section 4). RsiStrategy, MacdStrategy,
+RsiMacdConfluenceStrategy, and BollingerBandsStrategy had **never been run
 against real sandbox data at all** - only synthetic data, for
 correctness-verification purposes.
 
 **Before Phase 1 Step 2 (scoring engine) can compute a meaningful weight
 for anything, run all five strategies through
 `run_validation_hierarchy_real_data.py` (or its equivalent, extended to
-loop over strategies) against the real 16-instrument sandbox.** This can
-run in parallel with Phase 1 Step 1 (position accounting), since that step
-doesn't need real weights yet - but it must complete before Step 2 produces
-anything meaningful. Don't let Phase 1 Step 2 start with placeholder/equal
-weights and quietly stay that way.
+loop over strategies) against the real 16-instrument sandbox.** This ran in
+parallel with Phase 1 Step 1 (position accounting) as originally planned,
+since that step doesn't need real weights - see Phase 1 Step 1's actual
+status in `CONTEXT_HANDOFF.md` Section 7 for what's still outstanding
+there.
 
 ### 4.2 This is an analysis task, not a mechanical checkbox
 
@@ -216,6 +232,56 @@ gets its first contact with real evidence, and revisit anything above that
 the results call into question - not just a gate to clear before writing
 the scoring code.
 
+**RESULTS (this session)** — see `CONTEXT_HANDOFF.md` Section 4d for the
+full breakdown; summarized against each bullet above:
+
+- *Against Section 3/4/5*: real correlations closely matched the
+  synthetic-data numbers. SMA vs. Bollinger averaged **-0.59** across all
+  16 instruments (synthetic: -0.61). RSI vs. Bollinger averaged **+0.39**
+  (synthetic: +0.34). MACD stayed the least-correlated strategy with
+  everything else (avg 0.08-0.27), matching the "oddly uncorrelated" read.
+  The trend-vs-reversion opposition Section 3 leaned on is real, not a
+  synthetic-data artifact - some support for prioritizing Option B
+  (bucketed trend/reversion scores) over treating it as coincidence.
+  **New finding, not anticipated by this section**: RSI vs.
+  `RsiMacdConfluenceStrategy` averaged **+0.65** correlation (up to +0.82
+  on LTC/GBP) - not surprising given Confluence literally embeds RSI's own
+  signal as half its logic, but it means these two are not independent
+  votes for weighting purposes. Section 1's "don't double-allocate
+  correlated instruments" principle needs to also apply cross-*strategy*,
+  not just cross-instrument - not currently in this design, needs adding
+  to Section 6's pluggable modules.
+- *Against Section 2's weighting formula*: **did NOT produce sane weights
+  as originally written - a real defect, found and fixed.** Using each
+  candidate's raw uncorrected Tier-1 grid-winner return as base_metric for
+  anything short of Tier 4 let a REJECTED Tier-3 finalist outscore an
+  ACTUAL Tier 4 survivor: `BollingerBandsStrategy`/LTC_GBP (rejected at
+  Tier 4) scored a strawman weight of 9.96 against `RsiStrategy`/LTC_GBP
+  (an actual survivor) at 5.62. Cause: a Tier-3 finalist that fails Tier 4
+  already has a real bootstrap CI computed during that evaluation - the
+  sanity-check script was discarding it on rejection and falling back to
+  the raw, uncorrected Tier-1 score instead. **Fix, now applied**: use the
+  bootstrap CI-90 lower bound - computed for every Tier-3+ finalist
+  regardless of individual pass/fail - as the base metric uniformly for
+  every candidate that reaches Tier 3 or higher. After the fix, every
+  rejected finalist correctly shows a negative CI lower bound (clipped to
+  weight 0) - monotonicity restored. **This fix needs to be carried into
+  the real Phase 1 Step 2 scoring engine implementation**, not left only in
+  the sanity-check script (`run_full_sweep.py`) that found it.
+- *Against Section 8's debounce/rescale assumptions*: not yet assessed.
+  Per-survivor trade counts exist in the persisted run data but weren't
+  extracted or summarized this session - still open, needed before Section
+  8's debounce numbers can be set from real data rather than guessed.
+- *Against the wider product/feature and user-tier context*: no obvious
+  fiat-vs-crypto split in which strategies survived - survivors split
+  between JPY crosses (fiat) and Litecoin pairs (crypto), not crypto as a
+  class. If anything, Litecoin specifically stands out. Worth a closer look
+  before assuming a fiat/crypto module split in Section 6.
+- *Against what Phase 2-4 will need*: the RSI/Confluence correlation
+  finding above is new input for Section 6's correlation-discount module -
+  it needs to look at open positions across STRATEGIES on the same
+  instrument, not only across instruments, before Phase 2 is built.
+
 ## 5. Base metric candidates (compute several, let real data pick)
 
 **Decision**: don't commit to one metric. Compute candidates (and likely
@@ -235,7 +301,11 @@ to different strategy/instrument/situation) rather than one global winner.
 
 **Leaning, not a decision**: a two-part structure - point estimate
 (Sortino) × trust discount (CI width or lower bound) - rather than a
-single metric or an N-way blend with its own untested blend-weights.
+single metric or an N-way blend with its own untested blend-weights. The
+bootstrap CI-lower-bound approach used to fix Section 4.2's weighting
+defect (above) is a concrete instance of this leaning already working on
+real data - worth treating as the default rather than re-litigating from
+scratch in Phase 1 Step 2.
 
 **Named explicitly so it isn't lost**: every "blend N things" choice in
 this whole document spawns new blend-weights that themselves need
@@ -261,7 +331,11 @@ Candidate modules (cheap → expensive to build):
   curated lookup table, same spirit as `service_tiers.py`'s registry.
   Confirmed intent: **(a) a volatility/uncertainty discount**, symmetric
   regardless of direction - NOT a directional bias toward fiat. Applies
-  identically to a long or a short.
+  identically to a long or a short. **Real-data caveat (Section 4.2):** the
+  actual Tier 4 survivor set didn't split cleanly by fiat vs. crypto - a
+  fiat/crypto-keyed lookup table may not be the right shape for this
+  discount; worth checking against Litecoin-vs-other-crypto specifically
+  before building the table.
 - **Trailing realized volatility of the instrument** - already computable
   from candles, no new data source.
 - **Historical cost drag** (`cost_drag_pct`, already computed) - a
@@ -271,7 +345,11 @@ Candidate modules (cheap → expensive to build):
   is used as a Tier 4 gate today) that's directly informative here.
 - **Correlation with currently-open positions** (`portfolio.py`, live use
   not just diagnostic) - a new confident signal correlated with an
-  existing open position should get less incremental allocation.
+  existing open position should get less incremental allocation. **Real-
+  data finding (Section 4.2): this needs to run cross-STRATEGY as well as
+  cross-instrument** - RSI and RsiMacdConfluenceStrategy correlate at
+  +0.65 average (up to +0.82) on the same instrument, not just across
+  different instruments, since Confluence embeds RSI's own signal.
 - **Market cap / liquidity** (crypto) - BLOCKED ON DATA: OANDA/ccxt give
   price, not market cap; this pipeline has no source for it yet.
 - **Regulatory/eligibility status** - keep as a separate GATE ("allowed to
@@ -283,7 +361,8 @@ Candidate modules (cheap → expensive to build):
 like `service_tiers.py`'s own caveat)**: bronze = base agreement score
 only. Silver = + instrument-class/volatility discount. Gold = +
 cost-drag discount + CI-width discount + open-position-correlation
-discount + (later) lifecycle caps.
+discount (including the cross-strategy case above) + (later) lifecycle
+caps.
 
 ## 7. Hard caps and risk appetite (SETTLED shape)
 
@@ -343,7 +422,9 @@ anti-whipsaw protection and exit-timing logic.
   Bring into testing alongside the magnitude-based one.
 - **Actual numbers**: decide from real fee/cost data (Section 9.1), not
   guessed - a debounce threshold only means something relative to what a
-  rescale actually costs in commission.
+  rescale actually costs in commission. **Still blocked - see Section 9.1;
+  real per-survivor trade frequency (Section 4.2) also still needed and not
+  yet extracted.**
 
 ### 8.2 Trade/Metrics semantics (SETTLED)
 
@@ -386,7 +467,7 @@ working strategies from silent regressions.
 
 ## 9. Real-world realism
 
-### 9.1 Fee schedule sourcing (researched this session - starting point, not final)
+### 9.1 Fee schedule sourcing (researched a prior session - starting point, not final)
 
 Public 2026 rates found via web search, for planning only - EXACT rates
 depend on account type/tier and must be sourced per-account, not
@@ -397,18 +478,17 @@ hardcoded from a blog post:
   - *Standard* (spread-only): ~1.1 pips EUR/USD, no separate commission.
   - *Core*: raw spread from ~0.1 pips + **~$5/lot commission** (roughly
     $50/million traded) - needs $10,000 minimum deposit historically.
-  - **Confirmed: account not yet set up, choice not yet made.** This is
-    now a discussion topic for the START of the next chat (not just an
-    input to plug in) - that discussion should cover, at minimum: at what
-    point in the Phase 1 build this actually needs to be settled (it
-    blocks real commission numbers, not the position-accounting or
-    scoring-engine steps), what's actually involved in opening each
-    account type, and the pros/cons of Standard vs. Core specifically for
-    a systematic strategy that may rebalance positions more often than a
-    typical discretionary account (Core's transparent, volume-scaling
-    commission is usually the better fit for frequent, systematic trading
-    than Standard's cost-hidden-in-spread model - but confirm that
-    properly in the next chat rather than treating this as decided here).
+  - **Still not set up, choice still not made.** This remains a discussion
+    topic, not yet resolved: at what point in the Phase 1 build this
+    actually needs to be settled (it blocks real commission numbers, not
+    the position-accounting or scoring-engine steps), what's actually
+    involved in opening each account type, and the pros/cons of Standard
+    vs. Core specifically for a systematic strategy that may rebalance
+    positions more often than a typical discretionary account (Core's
+    transparent, volume-scaling commission is usually the better fit for
+    frequent, systematic trading than Standard's cost-hidden-in-spread
+    model - but confirm that properly rather than treating this as decided
+    here).
 - **Binance** (ccxt): spot base rate **0.10% maker / 0.10% taker**,
   dropping with VIP volume tier (e.g. VIP 3 ≈ 0.04-0.07%), 25% off with
   BNB fee payment.
@@ -435,7 +515,8 @@ hardcoded from a blog post:
 4. **Cannot be run in this sandbox** (no network access) - same
    constraint `fetch_sandbox_data.py` already has. The person runs it
    locally with real credentials and reports back, exactly like the
-   sandbox dataset was built.
+   sandbox dataset was built. Still true of the current sandbox
+   environment as of this session too.
 
 ### 9.2 Live-execution realism (SETTLED: build this, alongside Phase 1 Step 1)
 
@@ -472,11 +553,17 @@ confirmed as the right approach rather than one monolithic build):
    logic touches it - the backward-compatibility regression target
    (Section 8.3) is the exit criterion for this step. Build Section 9.2's
    realism constraints (min order size, precision) alongside this step,
-   not after.
+   not after. **DONE - see `CONTEXT_HANDOFF.md` Section 7.** Exit
+   criterion met: full test suite plus the entire real-data sweep
+   re-verified byte-identical against the redesigned engine.
+   `rescale_trade()` exists and is unit-tested; wiring it into a live
+   signal path is Step 3, not this step.
 2. **Scoring engine, shadow-computed only.** All three shapes × all
    candidate base metrics, logged per candle as data - does NOT yet
-   affect any real trade size. Needs Section 4.1's real-data hierarchy
-   runs completed first, or there's nothing meaningful to weight with.
+   affect any real trade size. **Section 4.1's real-data hierarchy runs are
+   now complete** (`CONTEXT_HANDOFF.md` Section 4d) - there is something
+   meaningful to weight with now, including the corrected base-metric
+   definition from Section 4.2's fix above. Still needs Step 1 done first.
 3. **Wire scoring → sizing**, one instrument, single-strategy-ensemble
    (start with the philosophically-similar strategies, e.g. RSI+MACD+
    Bollinger, before mixing in SMA - see Section 3's Option A/B note).
@@ -515,10 +602,12 @@ not just an implementation convenience.
 ## 12. Open questions to confirm at the START of the next chat
 
 Two of these were resolved in discussion (backward compatibility is now a
-confirmed requirement, Section 8.3); the two below are CONFIRMED as open -
-not just unanswered, actively "don't have this yet" - and both are
-explicitly deferred to a proper discussion at kickoff rather than decided
-here:
+confirmed requirement, Section 8.3); the two below remain CONFIRMED as
+open - not just unanswered, actively "don't have this yet" - and both are
+explicitly deferred to a proper discussion rather than decided here.
+**Neither was addressed this session** - this session's work was Section
+4.1's real-data run, not fee sourcing (see `CONTEXT_HANDOFF.md` Section 6
+for why that's a deliberate sequencing choice, not an oversight):
 
 1. **OANDA account type** (Section 9.1) - not set up yet. Discuss at
    kickoff: when in the Phase 1 sequence this actually needs deciding,
@@ -549,9 +638,14 @@ here:
   live-trading refinement.
 - **Effect-size-over-sample-size base metric** (Section 5) - not yet
   implemented anywhere, would need building before it can be compared.
-- **STILL OPEN FROM BEFORE THIS DISCUSSION** (`CONTEXT_HANDOFF.md`): all
+- ~~**STILL OPEN FROM BEFORE THIS DISCUSSION** (`CONTEXT_HANDOFF.md`): all
   five strategies still need their real-16-instrument Tier 0-4 run - now
-  promoted from "next step" to "hard blocking dependency" by Section 4.1.
+  promoted from "next step" to "hard blocking dependency" by Section 4.1.~~
+  **DONE - see `CONTEXT_HANDOFF.md` Section 4d.** Replaced by two new
+  items surfaced by that run: real per-survivor trade frequency for
+  Section 8.1's debounce thresholds (not yet extracted), and carrying
+  Section 4.2's bootstrap-CI base-metric fix into the real Phase 1 Step 2
+  implementation (currently only fixed in the sanity-check script).
 - `OandaBroker.get_quote`/`place_market_order` - still never run live,
   unchanged status, now doubly relevant given Section 9.2's live-realism
   work.

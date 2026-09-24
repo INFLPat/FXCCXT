@@ -1,18 +1,3 @@
-"""
-backtest/engine.py
-
-Event-driven backtest engine. See CONTEXT_HANDOFF.md for the two bugs this
-already had fixed (mark-to-market gap, walk-forward boundary carry).
-
-CHANGE THIS SESSION: BacktestResult gained `periods_in_market` (an int
-count, not a percentage - compute_metrics() turns it into exposure_pct%).
-It's populated by counting, per candle, whether a position was open *after*
-that candle's signal was applied - the same point equity_curve is appended,
-so exposure_pct and equity_curve stay consistent with each other. This is
-purely additive: existing fields, existing tests, and every other line of
-run()'s control flow are unchanged.
-"""
-
 import copy
 from dataclasses import dataclass, field
 
@@ -28,30 +13,89 @@ class CostModel:
     pip_size: float = 0.0001
     commission_pct: float = 0.0
     slippage_pct: float = 0.0
+    # Section 9.2 live-execution realism - optional, default None means "no
+    # constraint" since real per-instrument limits aren't sourced yet (see
+    # CONFIDENCE_SIZING_DESIGN.md Section 9.1, still blocked on real broker/
+    # exchange credentials). Never guessed/hardcoded here.
+    min_order_size: float | None = None
+    lot_step: float | None = None
+
+
+@dataclass
+class Fill:
+    """One individual execution against an open position - Phase 1's
+    weighted-average-entry partial-fill accounting
+    (CONFIDENCE_SIZING_DESIGN.md Section 8). `units` is SIGNED relative to
+    the position's own magnitude, not absolute direction: positive always
+    INCREASES the position (moves the weighted-average entry price),
+    negative always REDUCES it (realizes P&L against the current average) -
+    this holds for both LONG and SHORT trades, with `Trade.side` supplying
+    the direction separately. `price` already includes slippage."""
+
+    units: float
+    price: float
+    timestamp: str
+    commission: float
+    reason: str = ""
 
 
 @dataclass
 class Trade:
     side: str
-    units: float
+    units: float          # size of the trade's initial opening fill - unchanged meaning, not mutated by later rescales
     entry_time: str
-    entry_price: float
+    entry_price: float          # weighted-average across all increasing fills
     exit_time: str | None = None
-    exit_price: float | None = None
-    commission_paid: float = 0.0
+    exit_price: float | None = None      # price of the fill that brought net units to 0
+    commission_paid: float = 0.0          # sum of every fill's commission
     reason_open: str = ""
     reason_close: str = ""
+    # NEW (Phase 1 Step 1). Empty by default - every Trade constructed
+    # directly (as the whole existing test suite does) keeps behaving
+    # exactly as before via realized_pnl()'s legacy fallback branch below.
+    # BacktestEngine populates this for every trade it creates.
+    fills: list[Fill] = field(default_factory=list)
 
     @property
     def is_open(self) -> bool:
         return self.exit_price is None
 
+    def net_units(self) -> float:
+        """Current open size, 0 once fully closed. Falls back to `units`
+        for a hand-constructed Trade with no fill history (only meaningful
+        while open - a legacy closed Trade has no fills to sum)."""
+        if self.fills:
+            return sum(f.units for f in self.fills)
+        return self.units if self.is_open else 0.0
+
     def realized_pnl(self) -> float:
         if self.is_open:
             return 0.0
         direction = 1 if self.side == "LONG" else -1
-        gross = (self.exit_price - self.entry_price) * direction * self.units
-        return gross - self.commission_paid
+        if not self.fills:
+            # Legacy path: no fill history (every hand-constructed Trade
+            # in the existing test suite) - identical to the pre-Phase-1
+            # formula, byte-for-byte.
+            gross = (self.exit_price - self.entry_price) * direction * self.units
+            return gross - self.commission_paid
+        return self._fills_realized_pnl(direction)
+
+    def _fills_realized_pnl(self, direction: int) -> float:
+        assert self.fills, "_fills_realized_pnl requires a non-empty fill history"
+        assert direction in (1, -1), f"direction must be 1 or -1, got {direction}"
+        gross = 0.0
+        avg_entry = 0.0
+        open_units = 0.0
+        for f in self.fills:
+            if f.units > 0:
+                avg_entry = (avg_entry * open_units + f.price * f.units) / (open_units + f.units)
+                open_units += f.units
+            else:
+                reduce_units = -f.units
+                gross += (f.price - avg_entry) * direction * reduce_units
+                open_units -= reduce_units
+        total_commission = sum(f.commission for f in self.fills)
+        return gross - total_commission
 
 
 @dataclass
@@ -61,11 +105,6 @@ class BacktestResult:
     starting_balance: float
     ending_balance: float
     open_trade_at_end: Trade | None = None
-    # Count of candles where a position was open, measured at the same
-    # point equity_curve is appended each iteration. Used by
-    # compute_metrics() for exposure_pct - "what fraction of the tested
-    # period had capital actually at risk". Default 0 keeps every existing
-    # caller/test that constructs a BacktestResult by hand unaffected.
     periods_in_market: int = 0
 
     @property
@@ -115,7 +154,11 @@ class BacktestEngine:
 
         open_trade_at_end: Trade | None = None
         if open_trade is not None:
-            open_trade_at_end = copy.copy(open_trade)
+            # deepcopy, not copy: `fills` is now a mutable list - a shallow
+            # copy would share it by reference with the live `open_trade`,
+            # so the synthetic close fill added just below would leak into
+            # this snapshot too (corrupts walk_forward.py's carry-forward).
+            open_trade_at_end = copy.deepcopy(open_trade)
 
         if open_trade is not None:
             self._close_trade(open_trade, candles[-1], "end of backtest")
@@ -155,6 +198,71 @@ class BacktestEngine:
         trades.append(open_trade)
         return open_trade, balance
 
+    def rescale_trade(self, trade: Trade, delta_units: float, candle: Candle, reason: str) -> Trade:
+        """Adds to (delta_units > 0) or reduces (delta_units < 0) an open
+        position by exactly delta_units, as ONE new fill with its own
+        commission (CONFIDENCE_SIZING_DESIGN.md Section 8.2). Not yet
+        called from run()'s signal loop - built and tested standalone for
+        Phase 1 Step 3 (PositionManager) to call once that layer exists.
+        If delta_units fully flattens the position, sets exit_time/
+        exit_price/reason_close exactly as _close_trade does, so a caller
+        doesn't need two different code paths for "reduce" vs "close"."""
+        assert trade.is_open, "rescale_trade requires an open trade"
+        assert delta_units != 0, "rescale_trade requires a non-zero delta_units"
+
+        rounded_delta = self._apply_lot_constraints(delta_units)
+        assert rounded_delta != 0, "delta_units rounded to zero by lot_step - reject before calling rescale_trade"
+
+        if not trade.fills:
+            trade.fills.append(Fill(
+                units=trade.units, price=trade.entry_price, timestamp=trade.entry_time,
+                commission=trade.commission_paid, reason=trade.reason_open,
+            ))
+
+        current_net = trade.net_units()
+        increasing = rounded_delta > 0
+        price = self._increasing_price(trade.side, candle) if increasing else self._decreasing_price(trade.side, candle)
+        commission = self._commission_amount(price, abs(rounded_delta))
+
+        trade.fills.append(Fill(units=rounded_delta, price=price, timestamp=candle.timestamp, commission=commission, reason=reason))
+        trade.commission_paid += commission
+
+        if increasing:
+            trade.entry_price = (trade.entry_price * current_net + price * rounded_delta) / (current_net + rounded_delta)
+
+        new_net = trade.net_units()
+        if new_net <= 1e-9:
+            trade.exit_time = candle.timestamp
+            trade.exit_price = price
+            trade.reason_close = reason
+        return trade
+
+    def _apply_lot_constraints(self, units: float) -> float:
+        """Section 9.2: round toward zero to the nearest lot_step, and
+        reject (return 0) anything under min_order_size. No-op (returns
+        units unchanged) when either constraint is unset - the default,
+        until real per-instrument limits are sourced (see CostModel)."""
+        cm = self.cost_model
+        magnitude = abs(units)
+        if cm.min_order_size is not None and magnitude < cm.min_order_size:
+            return 0.0
+        if cm.lot_step is not None and cm.lot_step > 0:
+            steps = round(magnitude / cm.lot_step)
+            magnitude = steps * cm.lot_step
+        return magnitude if units > 0 else -magnitude
+
+    def _increasing_price(self, side: str, candle: Candle) -> float:
+        assert side in ("LONG", "SHORT"), f"unknown trade side: {side}"
+        if side == "LONG":
+            return candle.ask_close + self._slippage_amount(candle.ask_close)
+        return candle.bid_close - self._slippage_amount(candle.bid_close)
+
+    def _decreasing_price(self, side: str, candle: Candle) -> float:
+        assert side in ("LONG", "SHORT"), f"unknown trade side: {side}"
+        if side == "LONG":
+            return candle.bid_close - self._slippage_amount(candle.bid_close)
+        return candle.ask_close + self._slippage_amount(candle.ask_close)
+
     def _slippage_amount(self, reference_price: float) -> float:
         cm = self.cost_model
         return cm.slippage_pips * cm.pip_size + reference_price * cm.slippage_pct
@@ -167,45 +275,35 @@ class BacktestEngine:
     def _mark_to_market_pnl(self, trade: Trade, candle: Candle) -> float:
         assert trade.is_open, "_mark_to_market_pnl is only meaningful for an open trade"
         assert trade.side in ("LONG", "SHORT"), f"unknown trade side: {trade.side}"
-        if trade.side == "LONG":
-            slip = self._slippage_amount(candle.bid_close)
-            would_be_exit_price = candle.bid_close - slip
-        else:
-            slip = self._slippage_amount(candle.ask_close)
-            would_be_exit_price = candle.ask_close + slip
+        would_be_exit_price = self._decreasing_price(trade.side, candle)
+        net_units = trade.net_units() if trade.fills else trade.units
 
         direction = 1 if trade.side == "LONG" else -1
-        gross = (would_be_exit_price - trade.entry_price) * direction * trade.units
-        would_be_exit_commission = self._commission_amount(would_be_exit_price, trade.units)
+        gross = (would_be_exit_price - trade.entry_price) * direction * net_units
+        would_be_exit_commission = self._commission_amount(would_be_exit_price, net_units)
         return gross - trade.commission_paid - would_be_exit_commission
 
     def _open_trade(self, side: str, candle: Candle, reason: str) -> Trade:
         assert side in ("LONG", "SHORT"), f"side must be 'LONG' or 'SHORT', got {side!r}"
         assert self.units_per_trade > 0, "units_per_trade must be positive"
-        if side == "LONG":
-            slip = self._slippage_amount(candle.ask_close)
-            price = candle.ask_close + slip
-        else:
-            slip = self._slippage_amount(candle.bid_close)
-            price = candle.bid_close - slip
-
+        price = self._increasing_price(side, candle)
         commission = self._commission_amount(price, self.units_per_trade)
-        return Trade(
+        trade = Trade(
             side=side, units=self.units_per_trade, entry_time=candle.timestamp,
             entry_price=price, commission_paid=commission, reason_open=reason,
         )
+        trade.fills.append(Fill(units=self.units_per_trade, price=price, timestamp=candle.timestamp, commission=commission, reason=reason))
+        return trade
 
     def _close_trade(self, trade: Trade, candle: Candle, reason: str) -> None:
         assert trade.is_open, "_close_trade called on a trade that is already closed"
         assert trade.side in ("LONG", "SHORT"), f"unknown trade side: {trade.side}"
-        if trade.side == "LONG":
-            slip = self._slippage_amount(candle.bid_close)
-            price = candle.bid_close - slip
-        else:
-            slip = self._slippage_amount(candle.ask_close)
-            price = candle.ask_close + slip
+        price = self._decreasing_price(trade.side, candle)
+        net_units = trade.net_units() if trade.fills else trade.units
 
         trade.exit_time = candle.timestamp
         trade.exit_price = price
         trade.reason_close = reason
-        trade.commission_paid += self._commission_amount(price, trade.units)
+        close_commission = self._commission_amount(price, net_units)
+        trade.commission_paid += close_commission
+        trade.fills.append(Fill(units=-net_units, price=price, timestamp=candle.timestamp, commission=close_commission, reason=reason))

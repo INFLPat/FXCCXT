@@ -7,14 +7,9 @@ runs only on survivors of the tier before it. Implemented by
 
 **GATING LOGIC IS UNCHANGED FROM THE ORIGINAL SPEC** (see Section "Extended
 metrics" below for what's new). The Tier 0/1/2/3 pass/fail conditions below
-are exactly what they were before this session's metrics expansion - the
-new metrics are reported alongside every candidate, not gated on. That's a
-deliberate choice, not an oversight: with 0/16 real instruments currently
-clearing Tier 4 (see Section "Status"), adding new hard gates blind - before
-seeing their real distributions on this data - risks either making
-everything fail for a different, unexamined reason, or being redundant with
-the existing three gates. Revisit once there's a reason grounded in what
-the new metrics actually show.
+are exactly what they were before the metrics-expansion session - the
+extended metrics are reported alongside every candidate, not gated on.
+That's a deliberate choice, not an oversight.
 
 ## Tiers
 
@@ -24,8 +19,8 @@ Below this, every other metric is dominated by noise.
 **Tier 1 - Light metrics, full grid** (`metrics.py`): `total_return_pct > 0`,
 `profit_factor > 1` (or `None`), `max_drawdown_pct < 20%`. Tiers 0+1 are
 computed together from one `run_sensitivity_analysis()` call. Every
-candidate's full `Metrics` object - now ~25 fields, see "Extended metrics"
-below - is available on the `GridPointResult`, not just the three gated on.
+candidate's full `Metrics` object - ~25 fields - is available on the
+`GridPointResult`, not just the three gated on.
 
 **Tier 2 - Plateau check** (`sensitivity.py::neighbor_gap()`, free - reuses
 the Tier 1 grid): keep a candidate only if `neighbor_gap` is defined (not a
@@ -40,18 +35,15 @@ out-of-sample return is positive.
 **Tier 4 - Path/luck check + rolling diagnostics** (`bootstrap.py` +
 `rolling.py`, most expensive per-candidate, runs on the fewest): each
 finalist is re-run once against the full history to get a concrete trade
-list. That single re-run now feeds TWO things, at no extra backtest cost:
+list. That single re-run feeds TWO things, at no extra backtest cost:
 1. Bootstrapped (resample, 2000 iterations). Gate: 90% CI lower bound for
-   `total_return_pct` > 0, and `probability_of_loss < 40%`. The bootstrap's
-   `TRACKED_METRICS` grew this session (see below) - every finalist's
-   persisted `metrics` now carries observed value + 90% CI for each one,
-   not just the original three.
+   `total_return_pct` > 0, and `probability_of_loss < 40%`. Every
+   finalist's bootstrap CI is now used consistently as the base metric for
+   confidence-weighting purposes (see "Weighting-formula note" below) -
+   not just the ones that pass.
 2. Rolling Sharpe/Sortino/max-drawdown (`rolling.py`, default 500-period
    window) - a diagnostic, not part of the gate. Kept to Tier 3 finalists
-   only (never the full Tier 1 grid) specifically because storing a full
-   rolling series for every grid point across every instrument is a lot of
-   dead data for something that's a chart, not a scalar - see
-   `rolling.py`'s docstring.
+   only (never the full Tier 1 grid).
 
 **Persist**: only Tier 4 survivors call `RunStore.record_run(...,
 validation_stage="tier4_bootstrap")`.
@@ -62,84 +54,67 @@ validation_stage="tier4_bootstrap")`.
 `PROBABILITY_OF_LOSS_CEILING_PCT=40`, `DEFAULT_ROLLING_WINDOW=500`. All
 defined as constants at the top of `validation_orchestrator.py`.
 
-## Extended metrics (added this session)
+## Extended metrics
 
-`backtest/metrics.py` computes all of the following for every Tier 0/1
-candidate - free, since it's pure post-processing of a backtest that
-already ran, same cost class as the original Sharpe/profit-factor/drawdown:
+`backtest/metrics.py` computes ~25 fields for every Tier 0/1 candidate,
+free relative to the backtest that already ran: risk-adjusted ratios
+(Sortino, Calmar, Omega, recovery factor), drawdown shape (duration, Ulcer
+Index, still-underwater flag), per-trade economics (expectancy, payoff
+ratio, streaks, avg duration, cost drag %), tail/distribution risk (VaR,
+CVaR, tail ratio, skewness, kurtosis), Kelly fraction (informational only),
+exposure %, and an optional buy & hold benchmark/alpha.
 
-- **Risk-adjusted ratios**: Sortino, Calmar, Omega, recovery factor.
-- **Drawdown shape**: duration (max/avg, in periods), Ulcer Index,
-  still-underwater-at-end flag.
-- **Per-trade economics**: expectancy (currency and %), payoff ratio,
-  win/loss streaks, average trade duration (real wall-clock hours, parsed
-  from each trade's own timestamps), cost drag % (commission as a share of
-  gross pre-cost P&L).
-- **Tail/distribution risk** (trade-P&L based, not period-return based -
-  see `metrics.py` docstring for why the two are kept separate): historical
-  VaR/CVaR at 95%, tail ratio, skewness, excess kurtosis.
-- **Kelly fraction** - informational only, not a leverage recommendation;
-  unreliable on small trade counts by construction, flagged in-line rather
-  than suppressed.
-- **Exposure %** - needs `BacktestResult.periods_in_market`, a new field on
-  the engine's result (additive, doesn't change any existing behavior).
-- **Buy & hold benchmark + alpha** - only populated if `compute_metrics()`
-  is given the original `candles`; `None` otherwise, no gate impact.
-
-`backtest/rolling.py` (Tier 3 finalists only - see Tier 4 above) and
-`backtest/portfolio.py` (cross-instrument correlation/diversification, NOT
-part of the per-instrument gate at all - see its own docstring) are kept as
-separate modules specifically so their different cost/scope characteristics
-stay visible rather than being buried inside `metrics.py`.
+`backtest/rolling.py` (Tier 3 finalists only) and `backtest/portfolio.py`
+(cross-instrument AND, as of this session, cross-strategy correlation - see
+"Real-data run" below) are kept as separate modules for their different
+cost/scope characteristics.
 
 ## Service tiers (bronze/silver/gold) - a SEPARATE axis from the above
 
-`backtest/service_tiers.py` maps each metric to a minimum subscription tier
-allowed to see it. This is independent of the cost-tier placement above by
-design: a metric can be cheap to compute (cost-tier: Tier 1) and still be
-gated to a higher subscription tier (service-tier: gold) as a pure product
-decision, and vice versa - e.g. bootstrap shuffling is genuinely expensive
-(cost-tier: Tier 4) but was deliberately left available to silver, not
-gold-only, in the initial allocation.
+`backtest/service_tiers.py` maps each metric to a minimum subscription
+tier allowed to see it, independent of cost-tier placement. **This is a
+starting allocation, not a decision** - expect it to be revised once the
+subscription tiers are actually designed.
 
-**This is a starting allocation, not a decision** - expect it to be revised
-once the subscription tiers are actually designed. Changing an entry in
-`service_tiers.py` changes nothing about how anything is computed; that's
-the point of keeping it a separate, small, "dumb" registry rather than
-threading tier checks through `compute_metrics()`/`bootstrap.py`/the
-orchestrator directly.
+## Weighting-formula note (added this session - see CONTEXT_HANDOFF.md Section 4d)
 
-## Considered and deliberately NOT added this session
+`CONFIDENCE_SIZING_DESIGN.md` Section 4's strawman `tier_multiplier`
+weighting formula, as originally written, used the raw (uncorrected) Tier-1
+grid-winner return as the base metric for any candidate that didn't reach
+Tier 4 - including Tier-3 finalists that reached Tier 4 evaluation and were
+REJECTED there. That let a rejected candidate outscore a real Tier 4
+survivor (a concrete real-data example: `BollingerBandsStrategy`/LTC_GBP,
+rejected, scored 9.96 vs. `RsiStrategy`/LTC_GBP, an actual survivor, at
+5.62). Fix: use the bootstrap CI-90 lower bound - already computed during
+Tier 4 evaluation for every finalist, not just passing ones - as the base
+metric for every candidate that reaches Tier 3+. This needs to be carried
+into the real scoring engine when `CONFIDENCE_SIZING_DESIGN.md` Phase 1
+Step 2 is built, not left only in this session's sanity-check script.
 
-- **Sterling / Burke ratios**: both need identifying and averaging the N
-  largest *distinct* drawdown events, not just the single running max this
-  project already tracks - real added scope (drawdown-event segmentation),
-  likely low marginal value over Calmar at this stage. Revisit if Calmar
-  alone proves insufficient once real survivors exist to compare against.
-- **Information ratio**: needs a defined benchmark/index return series.
-  Only a single-instrument buy & hold exists so far (see "Extended metrics"
-  above) - a real benchmark (e.g. a GBP trade-weighted index, or an
-  equal-weight crypto basket) is future `portfolio.py` scope, not yet built.
-- **R-multiple expectancy**: needs a defined "risk per trade" (a stop-loss
-  distance), which the strategy layer doesn't have - `SmaCrossoverStrategy`
-  has no stop-loss concept at all. Blocked on that missing prerequisite,
-  not silently skipped.
-- **Gain-to-pain ratio**: essentially redundant with Omega/profit factor
-  already added (same "sum of gains vs. sum of losses" shape, computed at
-  a slightly different resolution) - didn't clear the bar for adding a
-  fourth near-duplicate ratio.
+## Considered and deliberately NOT added
+
+- **Sterling / Burke ratios**: need drawdown-event segmentation, not just
+  running-max tracking - real added scope, likely low marginal value over
+  Calmar at this stage.
+- **Information ratio**: needs a defined benchmark/index return series -
+  only single-instrument buy & hold exists so far.
+- **R-multiple expectancy**: needs a defined "risk per trade" (stop-loss
+  distance) the strategy layer doesn't have.
+- **Gain-to-pain ratio**: essentially redundant with Omega/profit factor.
 - **Parametric (variance-covariance) VaR**: the historical/percentile VaR
   already added doesn't assume a return distribution shape, which matters
-  given this project's own crypto data is visibly fat-tailed - a normal-
-  distribution assumption would be a downgrade, not an upgrade.
+  given this project's crypto data is visibly fat-tailed.
 
 ## Status
 
-Built and run against all 16 real 2025 H2 sandbox instruments with
-`SmaCrossoverStrategy` (`run_validation_hierarchy_real_data.py`) prior to
-this session's metrics work. Result: 0/16 instruments produced a Tier 4
-survivor - every apparent in-sample edge failed the bootstrap gate. See
-`CONTEXT_HANDOFF.md` for the full breakdown. This session's changes don't
-alter that result on their own (no gating logic changed) - they add
-reporting depth for whatever the next strategy family's candidates look
-like when re-run through the hierarchy.
+**Real-data run (this session, extends the prior SMA-only run):** all 5
+strategies (SMA crossover, RSI, MACD, RSI+MACD confluence, Bollinger Bands)
+run against all 16 real 2025 H2 sandbox instruments -
+80 (strategy, instrument) combinations, 186.6s total. **Result: 7
+(strategy, instrument) pairs cleared Tier 4** - the first Tier 4 survivors
+this project has produced. All 7 are RSI or RSI+MACD Confluence, all on
+JPY crosses or Litecoin pairs (GBP_JPY, USD_JPY, LTC/USDT, LTC/GBP). SMA
+crossover: 0/16 (unchanged from the prior session). MACD and Bollinger
+Bands: 0/16 each, despite both reaching Tier 3 repeatedly - always failed
+the bootstrap gate. Full breakdown, param grids used, and the Section 4.2
+correlation/weighting-formula checks: `CONTEXT_HANDOFF.md` Section 4d.

@@ -1,41 +1,3 @@
-"""
-data/run_store.py
-
-Persists backtest RESULTS - not raw market data (see data/store.py for that)
-- so a run's trades, commission, and the exact parameters that produced them
-survive after the Python process that ran them exits.
-
-Deliberately NOT wired into BacktestEngine.run() itself - that stays a pure,
-side-effect-free function (already true) so sensitivity.py's grid searches
-(dozens to hundreds of backtests per analysis) and bootstrap.py's resampling
-(thousands of synthetic backtests per analysis) don't each try to write a
-row. Call record_run() explicitly, only for a result that has cleared the
-validation hierarchy (see VALIDATION_HIERARCHY.md) - not from inside a grid
-search or resampling loop.
-
-`validation_stage` records which tier of that hierarchy a run actually
-cleared before being persisted - "tier3_walk_forward" or "tier4_bootstrap"
-in the intended workflow, though the field itself doesn't enforce this; the
-calling code decides when a result is worth keeping. This is what lets a
-future query distinguish "this was checked" from "this just happened to run
-once" once many runs accumulate.
-
-`metrics` stores a JSON snapshot of the key summary numbers (return, Sharpe,
-drawdown, profit factor, win rate) at persist time, so a run can be listed
-and compared without recomputing metrics from its trades every time.
-
-Same SQLite-or-Postgres backend choice as FxStore, same reasoning (local dev
-without network vs. the shared cloud DB later) - see data/store.py. Trade
-rows use a generated UUID primary key rather than AUTOINCREMENT/SERIAL
-specifically to avoid the two backends diverging on identity-column syntax -
-same principle as why candles uses a natural composite key instead.
-
-Testing status: SQLite path run and hand-verified against a real
-BacktestEngine result (tests/test_run_store.py) - not a hand-built fake.
-Postgres path shares the same SQL, untested against a real server - same
-caveat as FxStore's Postgres path.
-"""
-
 import json
 import os
 import uuid
@@ -84,7 +46,17 @@ CREATE TABLE IF NOT EXISTS trades (
     reason_open      TEXT,
     reason_close     TEXT
 );
+CREATE TABLE IF NOT EXISTS fills (
+    fill_id          TEXT PRIMARY KEY,
+    trade_id         TEXT NOT NULL,
+    units            REAL NOT NULL,
+    price            REAL NOT NULL,
+    timestamp        TEXT NOT NULL,
+    commission       REAL NOT NULL,
+    reason           TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_trades_run ON trades (run_id);
+CREATE INDEX IF NOT EXISTS idx_fills_trade ON fills (trade_id);
 CREATE INDEX IF NOT EXISTS idx_runs_lookup ON runs (strategy_name, instrument, validation_stage);
 """
 
@@ -108,8 +80,6 @@ class RunRecord:
 
 
 class RunStore:
-    """Storage for persisted (validated) backtest runs and their trades."""
-
     def __init__(self, database_url: str | None = None):
         self.database_url = database_url or os.environ.get("RUNS_DATABASE_URL") or DEFAULT_LOCAL_URL
         scheme = urlparse(self.database_url).scheme
@@ -162,9 +132,6 @@ class RunStore:
         period_end: str | None = None,
         notes: str = "",
     ) -> str:
-        """Persists one BacktestResult (and all its closed trades) as a
-        named, queryable run tagged with the validation tier it cleared.
-        Returns the generated run_id."""
         run_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc).isoformat()
         ph = self._ph
@@ -189,12 +156,29 @@ class RunStore:
                 exit_time, exit_price, commission_paid, reason_open, reason_close
             ) VALUES ({", ".join([ph] * 11)})
         """
+        trade_ids = [str(uuid.uuid4()) for _ in result.trades]
         trade_rows = [
             (
-                str(uuid.uuid4()), run_id, t.side, t.units, t.entry_time, t.entry_price,
+                trade_ids[i], run_id, t.side, t.units, t.entry_time, t.entry_price,
                 t.exit_time, t.exit_price, t.commission_paid, t.reason_open, t.reason_close,
             )
-            for t in result.trades
+            for i, t in enumerate(result.trades)
+        ]
+
+        # Additive (Phase 1 Step 1, CONFIDENCE_SIZING_DESIGN.md Section
+        # 8.3): every fill belonging to each trade, if the trade has fill
+        # history - empty for a hand-constructed Trade, which never
+        # reaches record_run() in practice. Existing `trades` columns are
+        # completely unchanged above.
+        fill_sql = f"""
+            INSERT INTO fills (
+                fill_id, trade_id, units, price, timestamp, commission, reason
+            ) VALUES ({", ".join([ph] * 7)})
+        """
+        fill_rows = [
+            (str(uuid.uuid4()), trade_ids[i], f.units, f.price, f.timestamp, f.commission, f.reason)
+            for i, t in enumerate(result.trades)
+            for f in t.fills
         ]
 
         with self._connect() as conn:
@@ -202,6 +186,8 @@ class RunStore:
             cur.execute(run_sql, run_row)
             if trade_rows:
                 cur.executemany(trade_sql, trade_rows)
+            if fill_rows:
+                cur.executemany(fill_sql, fill_rows)
 
         return run_id
 
