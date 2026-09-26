@@ -18,44 +18,45 @@ exist, output filename dynamically encodes the window (e.g.
 `kraken_csv/historical/` folder (Kraken's "Complete OHLCVT" bulk export)
 for everything before the quarterly exports begin (23Q1).
 
-## 1. Confirmed defect in the uploaded `sandbox_history.db`
+## 1. Original defect - FIXED, confirmed via `sandbox_22Q1to26Q1.db`
 
-Inspected directly this session. FX (OANDA) and USD-crypto (Binance) run
-2022-01-0{1,2} through 2026-09-25 ("today"). GBP-crypto (Kraken) runs
-**2023-01-01 through 2026-03-31 only** - no pre-2023 data at all (no
-`historical/` folder was ever ingested), and stalled ~6 months behind
-everything else (bounded by the last quarterly folder present, 26Q1).
-This is exactly the misalignment sandbox_config.py's design fixes -
-confirms the fetch script in the pulled repo context was still the old
-single-window version, not the "already generalized" version described
-from a prior chat. **Re-run both fetch scripts against the newly-created
-`kraken_csv/historical/` folder before trusting any figure below.**
+Original `sandbox_history.db`: FX/USD-crypto ran to "today" while
+GBP-crypto stalled at 2023-01-01 to 2026-03-31 (no historical folder, no
+END alignment). Rebuilt via the new `sandbox_config.py` +
+`kraken_csv/historical/` folder, then inspected directly:
 
-## 2. Immediate validation of the rebuilt dataset (before any strategy work)
+- **END aligned across all 16 instruments**: every one ends exactly
+  2026-03-31T23:00:00Z.
+- **GBP-crypto gap closed**: BTC/GBP, ETH/GBP, LTC/GBP, XRP/GBP now all
+  start 2022-01-01T00:00:00Z, matching USD-crypto exactly.
+- **FX starts 2022-01-02T22:00:00Z** (first Sunday-evening open after
+  2022-01-01, a Saturday) - expected FX market-hours behaviour, not a gap.
+- **Continuity**: crypto instruments show 1551 distinct calendar days -
+  exactly the full 2022-01-01..2026-03-31 span with zero missing days.
+  FX shows 1326 distinct days, consistent with the ~6/7-of-week FX trading
+  calendar (Sun 22:00 UTC - Fri 22:00 UTC).
+- **Row counts**: USD-crypto (Binance) ~37,223 candles each (1551 days x
+  24h, off by 1 - a single boundary hour, normal). GBP-crypto (Kraken)
+  slightly lower - BTC/GBP 37,203, ETH/GBP 37,188, XRP/GBP 37,139,
+  LTC/GBP 36,818 (~1.1% of hours missing, the largest gap of the four) -
+  consistent with real, lower-liquidity-pair thin/no-trade hours, not an
+  ingestion bug. Worth a closer look at LTC/GBP specifically if it ends up
+  a survivor instrument, but not blocking.
 
-1. Re-run the coverage/cross-validation check `CONTEXT_HANDOFF.md` Section
-   4 originally did for the 6-month sandbox ("16/16 instruments
-   cross-validated via cross-rate arithmetic") - sample-based this time
-   (spot-check a handful of months per instrument), not exhaustive, given
-   the much larger row count.
-2. Confirm `kraken_csv/historical/`'s CSVs actually contain GBP-pair data
-   back to 2022-01-01 - Kraken's GBP pairs may have listed later than the
-   USD pairs, or the bulk export's own start date may not reach 2022 at
-   all. **Check this before assuming the gap closes** - if it doesn't,
-   `GLOBAL_START` needs moving forward to whatever Kraken GBP-crypto
-   actually supports, not silently left producing a shorter GBP-crypto
-   series than the other 12 instruments.
-3. Gap-count check per instrument (missing hourly candles vs. expected
-   count for FX's weekday-only calendar vs. crypto's 24/7 calendar) -
-   `FxStore.coverage()` already gives min/max; add a count-vs-expected
-   check, since min/max alone can hide internal gaps.
-4. Rough compute-budget estimate before committing to a full re-sweep: the
+**Verdict: dataset confirmed correct and aligned.** Items 2-3 below are
+covered by the above; item 2's specific worry (GBP-pair listing date
+later than 2022) did not materialize.
+
+## 2. Remaining pre-work before any strategy sweep
+
+1. Rough compute-budget estimate before committing to a full re-sweep: the
    original 80-combination Tier 0-4 sweep took 186.6s on 6 months of data.
    ~4.25 years is roughly 8.5x the data - Tier 0/1 (`sensitivity.py`)
    scales with candle count x grid size; Tier 3 (`walk_forward.py`) adds
    more windows; Tier 4 (`bootstrap.py`) is per-finalist, not per-grid-
    point, so should scale much more mildly. Worth a short dry run on one
-   instrument before running the full 16 x 5-strategy sweep.
+   instrument before running the full 16 x 5-strategy sweep. **Still
+   open.**
 
 ## 3. Two-part out-of-time methodology
 

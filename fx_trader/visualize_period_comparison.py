@@ -41,6 +41,7 @@ from backtest.period_comparison import compare_periods
 from backtest.periods import calendar_year_periods
 from backtest.rolling import compute_rolling_metrics
 from data.store import FxStore
+from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
 from strategy.rsi_strategy import RsiStrategy
 
 # Config - matches this repo's existing run_*.py convention (hardcoded at
@@ -54,7 +55,7 @@ GRANULARITY = "H1"
 COST_MODEL = CostModel(commission_per_unit=0.00002, slippage_pips=1.0, pip_size=0.01)
 PERIODS_PER_YEAR = 252 * 24
 
-SANDBOX_DB = "sqlite:///data/sandbox_2025h2.db"  # swap to sandbox_history.db once it exists
+SANDBOX_DB = f"sqlite:///{sandbox_db_path(GLOBAL_START, discover_sandbox_end())}"  # dynamically named, auto-tracks the Kraken-bounded window
 OUTPUT_DIR = Path("charts")
 ROLLING_WINDOW = 500
 

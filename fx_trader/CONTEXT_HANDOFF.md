@@ -21,23 +21,24 @@ weighting formula was found and fixed this session (also Section 4d).
 Process, not trading system - read before anything else, since it governs
 how the rest of this handoff should be used.
 
-**Turn-pacing signal (adopted this session, refined after a real failure)**:
-for a large multi-part request spanning several replies, a reply that has
-NOT finished the full original ask ends with an explicit status line -
-what's done, what's next - so the person can tell "still working, say
-continue" apart from a silent processing cutoff. **Never end a turn with
-no closing text at all** - a turn that stops right after a tool call with
-nothing said is indistinguishable from a cutoff and defeats the whole
-point of this protocol; say something, even one line. Only a reply that
-has genuinely finished EVERYTHING asked (not just its own chunk) ends
-with the literal word `FNORD` on its own line - "I'm done, your turn,"
-borrowed from walkie-talkie "over" conventions. `FNORD` and "still
-working, here's my status" are the only two valid endings - never
-neither. Two honest caveats, stated rather than glossed over: (1) a hard
-length cutoff mid-reply would also cut off the marker - its absence isn't
-proof of failure, only its presence is proof of real completion; (2) this
-is pacing for one instruction, not a standing persona change - say it
-again if a future session needs it.
+**Turn-pacing / FNORD convention - now the project-wide default, canonical
+version in root `README.md`'s "Turn-pacing convention" section.** Short
+version: a reply that hasn't finished the full ask ends with a status
+line (what's done, what's next); a reply that has genuinely finished
+everything ends with the literal word `FNORD` on its own line. Never
+neither, never no closing text at all. One honest caveat: a hard length
+cutoff mid-reply would also cut off the marker - its absence isn't proof
+of failure, only its presence is proof of real completion. Applies by
+default in every chat in this project now, without needing to be
+requested.
+
+**Session handoff format - canonical version in root `README.md`'s
+"Session handoff format" section.** End any session with file changes by
+listing every changed/created file's full repo path, then run
+`fx_trader/utilities/apply_patch.py` against the JSON payload Claude
+provides - it creates/patches files, runs the test suite, and commits;
+`git push` stays a manual step by default. This replaces the old zip ->
+staging folder -> `rsync` process entirely.
 
 **Doc-bloat discipline**: these docs grow session over session by default;
 the standing goal is dense and current, not narrative history. Edit/
@@ -115,10 +116,16 @@ person re-runs and reports back.
 
 ## 4. CURRENT STATE
 
-**Sandbox dataset**: `data/sandbox_2025h2.db`, 2025-07-01 to 2025-12-31,
-16/16 instruments confirmed real and cross-validated. 8 FX (OANDA, 3,141
-candles each), 4 USD-crypto (Binance, 4,416 each), 4 GBP-crypto (Kraken
-CSV, 4,409-4,410 each).
+**Sandbox dataset**: `sandbox_22Q1to26Q1.db` (dynamically named via
+`sandbox_config.py`, GLOBAL_START 2022-01-01, END auto-detected from the
+latest `kraken_csv/YYQ#/` folder). Confirmed correct and aligned: all 16
+instruments end 2026-03-31T23:00:00Z; GBP-crypto now starts
+2022-01-01T00:00:00Z (matching USD-crypto, closing the old gap); FX
+starts 2022-01-02T22:00:00Z (first Sunday-evening open, expected). The
+original 6-month window (2025-07-01 to 2025-12-31) is now the historical
+training window for the 17 Tier 4 survivors below, not the current
+sandbox - see `ROADMAP_HISTORICAL_SANDBOX.md` for rollout status and open
+questions (compute-budget dry run still outstanding).
 
 Extended performance/risk metrics, rolling diagnostics, portfolio
 correlation tooling, and service-tier entitlement filtering were all built
@@ -345,18 +352,15 @@ permanent script location - see Section 6.
 Per `CONFIDENCE_SIZING_DESIGN.md` Section 10's phasing plan, and
 `ROADMAP.md`'s out-of-time-validation priority:
 
-0. **Out-of-time validation tooling - built, blocked on real data.**
-   `fetch_sandbox_data.py` and `ingest_kraken_gbp_csv.py` were both
-   generalized this session (arbitrary/wide date range; auto-discovery of
-   any number of Kraken quarterly CSV folders, not a hardcoded pair) to
-   build ONE continuous `data/sandbox_history.db` rather than one file per
-   window. `run_out_of_time_validation.py` auto-chunks whatever ends up
-   outside the original 2025 H2 training window into 6-month blocks per
-   instrument and replays all 17 persisted survivors against every block.
-   **Needs you to run the two fetch scripts locally (real credentials,
-   real network) and upload the resulting `data/sandbox_history.db`** -
-   nothing else is blocking this from running immediately once that
-   exists. See `ROADMAP.md` for the full out-of-time-validation rationale.
+0. **Out-of-time validation tooling - built, and the multi-year sandbox
+   is DONE.** `fetch_sandbox_data.py` and `ingest_kraken_gbp_csv.py` were
+   generalized (dynamic window via `sandbox_config.py`, auto-discovery of
+   Kraken quarterly folders plus a pre-2023 `historical/` folder), re-run,
+   and the result confirmed correct - see the Section 4 sandbox bullet
+   above. `run_out_of_time_validation.py` and `run_full_sweep.py` both
+   point at the new sandbox automatically now, no manual filename to
+   update. **Next**: the compute-budget dry run and the rest of the
+   rollout plan - see `ROADMAP_HISTORICAL_SANDBOX.md`, not repeated here.
 
 1. ~~Run all five strategies against real sandbox data~~ - **DONE, see
    Section 4d.** Section 4.2's weighting-formula defect was found and

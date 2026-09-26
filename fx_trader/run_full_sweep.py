@@ -29,9 +29,10 @@ from strategy.bollinger_strategy import BollingerBandsStrategy
 from strategy.macd_strategy import MacdStrategy
 from strategy.rsi_macd_confluence import RsiMacdConfluenceStrategy
 from strategy.rsi_strategy import RsiStrategy
+from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
 from strategy.sma_crossover import SmaCrossoverStrategy
 
-SANDBOX_DB = "sqlite:///data/sandbox_2025h2.db"
+SANDBOX_DB = f"sqlite:///{sandbox_db_path(GLOBAL_START, discover_sandbox_end())}"
 RUNS_DB = "sqlite:///data/full_sweep_runs.db"
 
 TARGET_NOTIONAL = 1_000.0

@@ -45,10 +45,11 @@ from backtest.validation_orchestrator import (
     PROBABILITY_OF_LOSS_CEILING_PCT,
 )
 from data.store import FxStore
+from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
 from strategy.rsi_macd_confluence import RsiMacdConfluenceStrategy
 from strategy.rsi_strategy import RsiStrategy
 
-HISTORY_DB = "sqlite:///data/sandbox_history.db"
+HISTORY_DB = f"sqlite:///{sandbox_db_path(GLOBAL_START, discover_sandbox_end())}"
 TARGET_NOTIONAL = 1_000.0
 STARTING_BALANCE = 10_000.0
 WINDOW_SIZE_MONTHS = 6

@@ -15,8 +15,10 @@ fx_trader/
 ├── VALIDATION_HIERARCHY.md         # Tier 0-4 gate spec + extended-metrics/service-tier notes
 ├── CONFIDENCE_SIZING_DESIGN.md     # Phase 1-4 spec: multi-strategy confidence scoring & position sizing (design only, not built)
 ├── CONTEXT_HANDOFF.md              # current state, read first
+├── ROADMAP_HISTORICAL_SANDBOX.md   # plan for the multi-year sandbox rollout (2022-latest Kraken quarter)
+├── sandbox_config.py               # shared sandbox window/filename source of truth
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
-├── ingest_kraken_gbp_csv.py        # Kraken bulk CSV loader for GBP-crypto
+├── ingest_kraken_gbp_csv.py        # Kraken bulk CSV loader for GBP-crypto, quarterly + pre-2023 'historical' folder
 ├── run_validation_hierarchy_real_data.py  # drives all 16 sandbox instruments through Tiers 0-4
 ├── data/
 │   ├── store.py                    # FxStore - candle storage, SQLite or Postgres
@@ -41,6 +43,7 @@ fx_trader/
 │   ├── bootstrap.py                # resample/shuffle Monte Carlo
 │   └── validation_orchestrator.py  # Tier 0-4 gate, wires the above together
 ├── tests/                          # one test module per backtest/data/broker component
+├── utilities/                      # apply_patch.py - session-handoff tool, see utilities/README.md
 └── run_*.py                        # single-instrument synthetic-data demos
 ```
 
@@ -59,7 +62,7 @@ python run_sensitivity_demo.py
 python run_bootstrap_demo.py
 python -m tests.test_engine            # ... and the rest of tests/*.py
 
-# Real sandbox data (needs data/sandbox_2025h2.db - see CONTEXT_HANDOFF.md)
+# Real sandbox data (dynamically named via sandbox_config.py - see CONTEXT_HANDOFF.md)
 python run_validation_hierarchy_real_data.py
 ```
 

@@ -19,9 +19,10 @@ from backtest.engine import CostModel
 from backtest.validation_orchestrator import run_validation_hierarchy
 from data.run_store import RunStore
 from data.store import FxStore
+from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
 from strategy.sma_crossover import SmaCrossoverStrategy
 
-SANDBOX_DB = "sqlite:///data/sandbox_2025h2.db"
+SANDBOX_DB = f"sqlite:///{sandbox_db_path(GLOBAL_START, discover_sandbox_end())}"
 RUNS_DB = "sqlite:///data/validated_runs.db"
 
 TARGET_NOTIONAL = 1_000.0   # 10% of the 10,000 starting balance, per instrument
