@@ -279,4 +279,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nAborted (Ctrl+C) - no commit was made. Any files already "
+              "written this run are still on disk; 'git status' to see them, "
+              "'git restore <file>' or 'git clean -fd' to undo, or re-run once ready.")
+        raise SystemExit(130)

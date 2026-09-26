@@ -47,7 +47,10 @@ python3 fx_trader/utilities/apply_patch.py ~/Downloads/patch.json --dry-run
    stay on disk (fix them, or `git restore <file>` to undo, then re-run).
 4. **Commits** - shows the suggested message and `git status --short`,
    lets you accept it, type a replacement, and stages exactly the files
-   the payload touched (never `git add .`).
+   the payload touched (never `git add .`). `Ctrl+C` at this or any prompt
+   aborts cleanly (no traceback, exit code 130) - no commit is made, though
+   files already written this run stay on disk, same as a test failure
+   (step 3).
 5. **Stops.** Prints `git push` for you to run by hand - unless
    `--auto-push` was passed, in which case it runs `git push` itself and
    reports the result (never force-pushes; a rejected push fails loudly
