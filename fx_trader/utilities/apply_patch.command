@@ -15,7 +15,7 @@ cd "$(dirname "$0")/../.."   # repo root (this file lives in fx_trader/utilities
 if [ "$#" -ge 1 ]; then
   PAYLOAD="$1"
 else
-  PAYLOAD=$(osascript -e 'POSIX path of (choose file with prompt "Choose the session patch JSON" of type {"json"})')
+  PAYLOAD=$(osascript -e 'POSIX path of (choose file with prompt "Choose the session patch JSON")')
 fi
 
 echo "Using payload: $PAYLOAD"
