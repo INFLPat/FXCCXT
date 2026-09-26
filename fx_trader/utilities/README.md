@@ -1,3 +1,4 @@
+<!-- fx_trader_utilities_readme (fx_trader/utilities/README.md) -->
 # apply_patch.py - session handoff tool
 
 Applies a Claude session's file changes to this repo: creates new files,

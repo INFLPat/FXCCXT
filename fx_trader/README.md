@@ -1,3 +1,4 @@
+<!-- fx_trader_readme (fx_trader/README.md) -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
