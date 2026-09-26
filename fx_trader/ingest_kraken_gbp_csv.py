@@ -2,32 +2,37 @@
 ingest_kraken_gbp_csv.py
 
 Loads Kraken bulk-historical OHLCVT CSVs (BTC/ETH/XRP/LTC vs GBP) into the
-sandbox database. GENERALIZED this session (ROADMAP.md Section 1 /
-out-of-time validation): instead of a hardcoded dict naming exactly which
-quarters to load, this now AUTO-DISCOVERS every quarterly subfolder under
-CSV_DIR and ingests whatever it finds - drop in as many quarters as you
-can obtain from Kraken's bulk-download page (25Q1, 25Q2, 24Q4, 24Q3, ...,
-however far back their bulk exports go) and one run picks up all of them.
-No date-range filtering is applied here (unlike the original H2-2025-only
-version) - every row from every discovered file is ingested; slice out
-whatever window you need later via FxStore.get_candles(start=, end=).
+sandbox database, filtered to the shared sandbox window (sandbox_config.py).
+Kraken's live OHLC API cannot serve historical data this old - this is the
+confirmed workaround.
 
-Kraken's LIVE OHLC API only serves a rolling recent window, not arbitrary
-historical ranges - this bulk-CSV path is the confirmed, still-necessary
-workaround (see brokers/ccxt_broker.py's docstring for the same
-limitation from the live-API side). How far back Kraken's bulk exports
-actually go is NOT something this script or this sandbox can check (no
-network access here) - confirm on Kraken's own bulk-download page before
-assuming a given historical quarter is available.
+TWO KINDS OF SOURCE FOLDER, auto-discovered under kraken_csv/ - nothing to
+list by hand:
+- `kraken_csv/historical/` - Kraken's "Complete OHLCVT" bulk export, which
+  covers everything from Kraken's own listing date up to whenever it was
+  downloaded. Only rows inside the shared window are ever loaded (see
+  sandbox_config.GLOBAL_START), so this folder is safe to hold more history
+  than the sandbox wants - the row-level filter in load_kraken_csv() does
+  the trimming. Needed because the quarterly exports only go back to
+  23Q1 - this folder is what makes 2022 data available at all.
+- `kraken_csv/YYQ#/` (e.g. `kraken_csv/23Q1/`) - Kraken's quarterly
+  incremental exports, one folder per quarter, covering the period the
+  bulk export doesn't reach. Loaded AFTER the historical folder, so a
+  quarterly file's rows win over the historical file's for any date both
+  happen to cover (upsert_candles is last-write-wins) - the quarterly
+  export is the more current source for its own quarter.
 
-FILE ORGANISATION - one subfolder per quarter, Kraken's own filenames
-(which repeat identically across quarters) kept as-is inside each:
+FILE ORGANISATION WITHIN A FOLDER: Kraken's quarterly incremental
+downloads reuse the same filename per pair across quarters (e.g. every
+quarter's ETHGBP_60.csv is named identically) - each quarter must be
+extracted into its OWN subfolder, which is exactly what the folder-per-
+quarter layout below requires.
 
-    kraken_csv/25Q1/{XBTGBP,ETHGBP,XRPGBP,LTCGBP}_60.csv
-    kraken_csv/25Q2/{XBTGBP,ETHGBP,XRPGBP,LTCGBP}_60.csv
-    kraken_csv/25Q3/{XBTGBP,ETHGBP,XRPGBP,LTCGBP}_60.csv
-    kraken_csv/25Q4/{XBTGBP,ETHGBP,XRPGBP,LTCGBP}_60.csv
-    ... (add as many quarter folders as you have - no code change needed)
+    kraken_csv/historical/{XBTGBP,ETHGBP,XRPGBP,LTCGBP}_60.csv   # pre-quarterly bulk export
+    kraken_csv/23Q1/{XBTGBP,ETHGBP,XRPGBP,LTCGBP}_60.csv
+    kraken_csv/23Q2/{XBTGBP,ETHGBP,XRPGBP,LTCGBP}_60.csv
+    ...
+    kraken_csv/26Q1/{XBTGBP,ETHGBP,XRPGBP,LTCGBP}_60.csv
 
 CSV format (no header): unix_timestamp,open,high,low,close,volume,trades
 
@@ -35,53 +40,79 @@ Like Binance, bid=ask=traded price (no separate historical bid/ask from
 Kraken). Volume is stored as the true float, NOT truncated to int like
 ccxt_broker.py does - Kraken's GBP-pair volumes are frequently under 1.
 
+WINDOW ALIGNMENT: START/END/DB_PATH come from sandbox_config.py, the same
+shared source fetch_sandbox_data.py uses - END here is auto-detected from
+whichever quarterly folders actually exist under kraken_csv/, so the two
+scripts can never drift out of alignment as long as both are re-run after
+adding a new quarter's folder (this replaces the earlier hardcoded-quarter
+approach, which silently stalled GBP-crypto at 25Q4 while FX/USD-crypto
+kept advancing - see sandbox_config.py's docstring).
+
 Run: python3 ingest_kraken_gbp_csv.py
 """
 
+import csv
 from datetime import datetime, timezone
 from pathlib import Path
 
 from data.store import Candle, FxStore
+from sandbox_config import (
+    GLOBAL_START,
+    HISTORICAL_FOLDER_NAME,
+    KRAKEN_CSV_DIR,
+    discover_sandbox_end,
+    quarter_folder_names,
+    sandbox_db_path,
+)
 
-CSV_DIR = Path("kraken_csv")
-DB_PATH = "data/sandbox_history.db"
+CSV_DIR = KRAKEN_CSV_DIR
 GRANULARITY = "1h"
+START = GLOBAL_START
+END = discover_sandbox_end(CSV_DIR)
+DB_PATH = sandbox_db_path(START, END)
 
-# Kraken's own per-quarter filename -> instrument. Same 4 files expected
-# inside EVERY discovered quarter subfolder.
-FILENAME_TO_INSTRUMENT = {
-    "XBTGBP_60.csv": "BTC/GBP",
-    "ETHGBP_60.csv": "ETH/GBP",
-    "XRPGBP_60.csv": "XRP/GBP",
-    "LTCGBP_60.csv": "LTC/GBP",
+KRAKEN_FILENAMES = {
+    "BTC/GBP": "XBTGBP_60.csv",
+    "ETH/GBP": "ETHGBP_60.csv",
+    "XRP/GBP": "XRPGBP_60.csv",
+    "LTC/GBP": "LTCGBP_60.csv",
 }
 
-MAX_QUARTER_FOLDERS = 200  # explicit ceiling - 50 years of quarters is far beyond any realistic use
 
-
-def discover_quarter_folders() -> list[Path]:
-    """Every immediate subfolder of CSV_DIR, sorted for deterministic,
-    readable run order - no assumption about naming beyond "a folder"."""
-    if not CSV_DIR.exists():
-        return []
-    folders = sorted(p for p in CSV_DIR.iterdir() if p.is_dir())
-    assert len(folders) <= MAX_QUARTER_FOLDERS, (
-        f"{len(folders)} quarter folders found under {CSV_DIR} - exceeds the explicit "
-        f"ceiling of {MAX_QUARTER_FOLDERS}, check CSV_DIR isn't pointed somewhere unexpected"
+def _source_folders(csv_dir: Path) -> list[str]:
+    """'historical' (if present) followed by every discovered quarterly
+    folder, chronologically - the load order that makes a quarterly file
+    win over the historical file for any overlapping date."""
+    assert csv_dir is not None, "_source_folders requires a csv_dir"
+    folders = []
+    if (csv_dir / HISTORICAL_FOLDER_NAME).is_dir():
+        folders.append(HISTORICAL_FOLDER_NAME)
+    folders.extend(quarter_folder_names(csv_dir))
+    assert folders, (
+        f"no source folders found under {csv_dir} - expected '{HISTORICAL_FOLDER_NAME}/' "
+        "and/or at least one YYQ# quarterly folder"
     )
     return folders
 
 
+def _instrument_files(csv_dir: Path, filename: str) -> list[str]:
+    return [f"{folder}/{filename}" for folder in _source_folders(csv_dir)]
+
+
+KRAKEN_FILES = {
+    instrument: _instrument_files(CSV_DIR, filename)
+    for instrument, filename in KRAKEN_FILENAMES.items()
+}
+
+
 def load_kraken_csv(path: Path, instrument: str) -> list[Candle]:
-    """Every row in the file, unfiltered by date - window-slicing happens
-    later via FxStore.get_candles(start=, end=), not here."""
     candles = []
     with open(path, newline="") as f:
-        for line in f:
-            row = line.strip().split(",")
-            if len(row) < 6:
-                continue
+        reader = csv.reader(f)
+        for row in reader:
             ts = datetime.fromtimestamp(int(row[0]), tz=timezone.utc)
+            if not (START <= ts <= END):
+                continue
             o, h, l, c, vol = float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5])
             candles.append(
                 Candle(
@@ -95,55 +126,44 @@ def load_kraken_csv(path: Path, instrument: str) -> list[Candle]:
     return candles
 
 
-def ingest_one_quarter(store: FxStore, quarter_folder: Path) -> dict[str, int]:
-    """Ingests every recognized file inside one quarter folder. Returns
-    {instrument: rows_written} for whatever was actually found there -
-    a quarter folder missing some/all of the 4 files is logged and
-    partially processed, never a hard failure for the whole run."""
-    assert quarter_folder.is_dir(), f"{quarter_folder} must be a directory"
-    written: dict[str, int] = {}
-    for filename, instrument in FILENAME_TO_INSTRUMENT.items():
-        path = quarter_folder / filename
+def _load_instrument_files(instrument: str, filenames: list[str]) -> tuple[list[Candle], bool]:
+    """Loads and merges every source file for one instrument, in the order
+    given (historical first, then quarters ascending). Returns (candles,
+    any_file_found) - a missing/unparseable file is logged and skipped,
+    never a silent drop."""
+    assert filenames, f"{instrument}: KRAKEN_FILES entry must list at least one file"
+    all_candles: list[Candle] = []
+    any_file_found = False
+    for filename in filenames:
+        path = CSV_DIR / filename
         if not path.exists():
-            print(f"    {quarter_folder.name}/{filename}: not found - skipped")
+            print(f"  {instrument}: FILE NOT FOUND at {path}")
             continue
+        any_file_found = True
         try:
-            candles = load_kraken_csv(path, instrument)
+            all_candles.extend(load_kraken_csv(path, instrument))
         except (OSError, ValueError, IndexError) as exc:
-            print(f"    {quarter_folder.name}/{filename}: FAILED to parse - {exc}")
-            continue
-        if not candles:
-            print(f"    {quarter_folder.name}/{filename}: parsed but 0 rows")
-            continue
-        n = store.upsert_candles(candles)
-        written[instrument] = written.get(instrument, 0) + n
-    return written
+            print(f"  {instrument}: FAILED to parse {filename} - {exc}")
+    return all_candles, any_file_found
 
 
 def main():
+    print(f"Sandbox window: {START.date()} to {END.date()} -> {DB_PATH}")
+    print(f"Source folders discovered: {_source_folders(CSV_DIR)}")
     store = FxStore(database_url=f"sqlite:///{DB_PATH}")
-    quarter_folders = discover_quarter_folders()
 
-    if not quarter_folders:
-        print(f"No quarter subfolders found under {CSV_DIR}/ - nothing to ingest.")
-        print("Expected layout: kraken_csv/<label>/{XBTGBP,ETHGBP,XRPGBP,LTCGBP}_60.csv")
-        return
+    for instrument, filenames in KRAKEN_FILES.items():
+        all_candles, any_file_found = _load_instrument_files(instrument, filenames)
+        if not any_file_found:
+            continue
+        if not all_candles:
+            print(f"  {instrument}: parsed {len(filenames)} file(s) but found 0 rows in range")
+            continue
+        n = store.upsert_candles(all_candles)
+        print(f"  {instrument}: {len(all_candles)} candles in range across {len(filenames)} file(s), {n} rows written")
 
-    print(f"Found {len(quarter_folders)} quarter folder(s): {[p.name for p in quarter_folders]}")
-    totals: dict[str, int] = {}
-    for folder in quarter_folders:
-        print(f"\n=== {folder.name} ===")
-        written = ingest_one_quarter(store, folder)
-        for instrument, n in written.items():
-            totals[instrument] = totals.get(instrument, 0) + n
-            print(f"    {instrument}: {n} rows written from this quarter")
-
-    print("\n=== Totals across all discovered quarters ===")
-    for instrument in FILENAME_TO_INSTRUMENT.values():
-        print(f"  {instrument}: {totals.get(instrument, 0)} rows written")
-
-    print("\n=== Coverage check (full stored range, all quarters combined) ===")
-    for instrument in FILENAME_TO_INSTRUMENT.values():
+    print("\n=== Coverage check ===")
+    for instrument in KRAKEN_FILES:
         coverage = store.coverage(instrument, GRANULARITY)
         print(f"  {instrument} ({GRANULARITY}): {coverage or 'NO DATA WRITTEN'}")
 
