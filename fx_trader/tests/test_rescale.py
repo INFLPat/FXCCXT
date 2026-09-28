@@ -1,11 +1,9 @@
 """
 tests/test_rescale.py
 
-Proves the NEW Phase 1 Step 1 capability (CONFIDENCE_SIZING_DESIGN.md
-Section 8): weighted-average-entry partial fills via
-BacktestEngine.rescale_trade(), and Section 9.2's lot-size/min-order
-constraints. Not yet wired into run()'s signal loop (that's Phase 1 Step
-3) - tested standalone by calling _open_trade/rescale_trade directly.
+Tests weighted-average-entry partial fills (BacktestEngine.rescale_trade())
+and lot-size/min-order constraints, called directly (not yet wired into
+run()'s signal loop - see ROADMAP.md).
 
 Every P&L number here is hand-computed, not just asserted non-None - same
 discipline as test_engine.py.

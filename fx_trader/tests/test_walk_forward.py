@@ -3,10 +3,8 @@ tests/test_walk_forward.py
 
 Hand-verified test of the walk-forward machinery, using a trivial,
 fully-predictable strategy (not SmaCrossoverStrategy) so every number can be
-checked by hand. Targets the bug described in backtest/walk_forward.py: does
-a position still open at the in-sample/out-of-sample boundary carry forward,
-instead of silently vanishing because the strategy only signals on a
-*change* of state rather than "I am currently bullish"?
+checked by hand. Verifies a position still open at the in-sample/out-of-sample
+boundary carries forward (see backtest/walk_forward.py for why this matters).
 
 Run: python -m tests.test_walk_forward
 """

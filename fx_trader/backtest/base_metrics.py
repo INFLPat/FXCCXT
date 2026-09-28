@@ -8,7 +8,7 @@ portfolio.py/service_tiers.py are separate: a different concern - this
 module COMBINES already-computed metrics into scoring candidates, it
 doesn't compute anything from a BacktestResult directly.
 
-See SUBTASK_BASE_METRICS.md for the full role categorization of all ~25
+See CONTEXT_HANDOFF.md Section 4e for the role categorization of all ~25
 Metrics fields and the reasoning behind which cross-role blends are worth
 building. Short version: Metrics fields fall into five roles -
 MAGNITUDE (how big is the edge), RELIABILITY (how much to trust the
@@ -76,7 +76,7 @@ def effect_size_over_sample_size(closed_trades: list[Trade]) -> float | None:
 
 CANDIDATES = {
     "ci_lower_bound": "Bootstrap CI-90 lower bound of total_return_pct - MAGNITUDE x RELIABILITY, "
-                       "already in use (the fixed base_metric from SUBTASK_CROSS_STRATEGY_CORRELATION.md's sibling fix)",
+                       "already in use (the fixed base_metric, CONTEXT_HANDOFF.md Section 4d)",
     "ci_lower_bound_cost_adjusted": "ci_lower_bound further discounted by cost_drag_pct - adds COST-REALISM as a third factor",
     "expectancy_cost_adjusted": "trade_expectancy_pct discounted by cost_drag_pct - cheaper than bootstrapping, "
                                  "no resampling needed, MAGNITUDE x COST-REALISM only (no reliability discount)",

@@ -4,15 +4,15 @@ backtest/strategy_clustering.py
 Cross-strategy correlation handling. CONFIDENCE_SIZING_DESIGN.md Section
 1's "don't double-allocate correlated instruments" principle extended to
 strategies on the same instrument - a real defect found this session (see
-CONTEXT_HANDOFF.md Section 4d, SUBTASK_CROSS_STRATEGY_CORRELATION.md for
-the full reasoning): RsiStrategy vs RsiMacdConfluenceStrategy correlate
+CONTEXT_HANDOFF.md Sections 4d-4e for the full
+reasoning): RsiStrategy vs RsiMacdConfluenceStrategy correlate
 at +0.65 average (up to +0.82 on LTC/GBP) because Confluence literally
 embeds RSI's own signal as half its logic. Naively summing both
 strategies' weighted votes in Section 2.2's raw_score formula
 double-counts one edge as two independent confirmations.
 
-TWO MECHANISMS, both built and compared on real data (see the sub-task
-doc for the full comparison and which to ship first):
+TWO MECHANISMS, both built and compared on real data (see CONTEXT_HANDOFF.md
+Section 4e for the comparison and decision):
 
 1. CLUSTER/GROUP (`cluster_strategies` + `collapse_to_cluster_votes`):
    single-linkage clustering on a strategy correlation matrix, computed
@@ -33,8 +33,8 @@ doc for the full comparison and which to ship first):
 
 Both computed STATICALLY (once per instrument, from the historical
 validation run) - not live/rolling. Dynamic/rolling correlation is
-explicitly deferred to a future session (see sub-task doc's future-work
-section) - it turns the correlation lookback window itself into a new,
+explicitly deferred to a future session (see CONTEXT_HANDOFF.md
+Section 4e) - it turns the correlation lookback window itself into a new,
 unvalidated hyperparameter (Section 2.4's own warning), and live
 recomputation is real new infrastructure, not a formula change.
 
@@ -46,7 +46,7 @@ to derive from an existing one, without hardcoding that case.
 
 from dataclasses import dataclass, field
 
-CORRELATION_CLUSTER_THRESHOLD = 0.5  # a stated, deliberate starting value - NOT yet validated via sensitivity analysis (see sub-task doc's risk register)
+CORRELATION_CLUSTER_THRESHOLD = 0.5  # a stated, deliberate starting value - NOT yet validated via sensitivity analysis (see CONTEXT_HANDOFF.md Section 4e)
 
 
 @dataclass
@@ -74,10 +74,16 @@ def cluster_strategies(
 
     def find(name: str) -> str:
         root = name
+        steps = 0
         while parent[root] != root:
             root = parent[root]
-        while parent[name] != root:
-            parent[name], name = root, parent[name]
+            steps += 1
+            assert steps <= len(names), "find() exceeded union-find depth ceiling - corrupt parent map"
+        cursor, steps = name, 0
+        while parent[cursor] != root:
+            parent[cursor], cursor = root, parent[cursor]
+            steps += 1
+            assert steps <= len(names), "find() path compression exceeded ceiling"
         return root
 
     def union(a: str, b: str) -> None:

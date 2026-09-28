@@ -27,6 +27,8 @@ from backtest.metrics import Metrics, compute_metrics
 from data.store import Candle
 from strategy.base import Strategy
 
+MAX_GRID_SIZE = 5_000  # explicit ceiling, independent of any caller's own limit
+
 
 @dataclass
 class GridPointResult:
@@ -230,6 +232,10 @@ def run_sensitivity_analysis(
     cost_model = cost_model or CostModel()
     param_names = list(param_grid.keys())
     value_lists = [param_grid[name] for name in param_names]
+    grid_size = 1
+    for values in value_lists:
+        grid_size *= len(values)
+    assert grid_size <= MAX_GRID_SIZE, f"grid of {grid_size} combinations exceeds MAX_GRID_SIZE={MAX_GRID_SIZE}"
 
     grid_points: list[GridPointResult] = []
     for combo in itertools.product(*value_lists):

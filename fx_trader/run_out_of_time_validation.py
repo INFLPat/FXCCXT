@@ -2,16 +2,16 @@
 run_out_of_time_validation.py
 
 Out-of-time validation for the 17 individually-persisted Tier 4 survivor
-runs from the 2025 H2 sweep (ROADMAP.md Section 1). Reads whatever
+runs from the 2025 H2 sweep (ROADMAP.md Section 2). Reads whatever
 multi-year history exists in data/sandbox_history.db and tests every
 survivor against every WINDOW_SIZE_MONTHS-sized block outside the
 original training window, via backtest/periods.py's shared
 fixed_month_periods() - REFACTORED this session to use that shared
 module instead of its own private chunking logic (was duplicated with
 what visualize_period_comparison.py also needs - see
-SUBTASK_VISUALIZATION.md for why this was factored out).
+CONTEXT_HANDOFF.md Section 4e).
 
-Two-part methodology (ROADMAP.md Section 1):
+Two-part methodology (ROADMAP.md Section 2):
 1. FROZEN-CANDIDATE REPLAY (this script): every survivor's exact
    (strategy, params, instrument) combination, unchanged - no
    re-selection, no re-tuning - re-run against EVERY out-of-training
@@ -36,7 +36,7 @@ Run: python run_out_of_time_validation.py
 from datetime import datetime, timezone
 
 from backtest.bootstrap import run_bootstrap_from_result
-from backtest.engine import BacktestEngine, CostModel
+from backtest.engine import BacktestEngine
 from backtest.metrics import compute_metrics
 from backtest.periods import fixed_month_periods
 from backtest.validation_orchestrator import (
@@ -45,29 +45,19 @@ from backtest.validation_orchestrator import (
     PROBABILITY_OF_LOSS_CEILING_PCT,
 )
 from data.store import FxStore
+from instrument_config import INSTRUMENT_INFO as ALL_INSTRUMENT_INFO, STARTING_BALANCE, TARGET_NOTIONAL
 from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
 from strategy.rsi_macd_confluence import RsiMacdConfluenceStrategy
 from strategy.rsi_strategy import RsiStrategy
 
 HISTORY_DB = f"sqlite:///{sandbox_db_path(GLOBAL_START, discover_sandbox_end())}"
-TARGET_NOTIONAL = 1_000.0
-STARTING_BALANCE = 10_000.0
 WINDOW_SIZE_MONTHS = 6
 
 TRAINING_WINDOW_START = datetime(2025, 7, 1, tzinfo=timezone.utc)
 TRAINING_WINDOW_END = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
 
-FX_COST_MODEL_JPY = CostModel(commission_per_unit=0.00002, slippage_pips=1.0, pip_size=0.01)
-CRYPTO_COST_MODEL = CostModel(commission_pct=0.001, slippage_pct=0.0005)
-FX_PPY = 252 * 24
-CRYPTO_PPY = 365 * 24
-
-INSTRUMENT_INFO = {
-    "GBP_JPY": ("H1", FX_COST_MODEL_JPY, FX_PPY),
-    "USD_JPY": ("H1", FX_COST_MODEL_JPY, FX_PPY),
-    "LTC/USDT": ("1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-    "LTC/GBP": ("1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-}
+SURVIVOR_INSTRUMENTS = ("GBP_JPY", "USD_JPY", "LTC/USDT", "LTC/GBP")
+INSTRUMENT_INFO = {name: ALL_INSTRUMENT_INFO[name] for name in SURVIVOR_INSTRUMENTS}
 
 # The exact 17 persisted Tier 4 survivors from the 2025 H2 sweep
 # (data/full_sweep_runs.db) - queried directly, not retyped from memory.

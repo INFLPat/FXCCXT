@@ -16,8 +16,9 @@ fx_trader/
 ├── VALIDATION_HIERARCHY.md         # Tier 0-4 gate spec + extended-metrics/service-tier notes
 ├── CONFIDENCE_SIZING_DESIGN.md     # Phase 1-4 spec: multi-strategy confidence scoring & position sizing (design only, not built)
 ├── CONTEXT_HANDOFF.md              # current state, read first
-├── ROADMAP_HISTORICAL_SANDBOX.md   # plan for the multi-year sandbox rollout (2022-latest Kraken quarter)
+├── ROADMAP.md                      # sequenced build/test plan, risk register, sandbox status
 ├── sandbox_config.py               # shared sandbox window/filename source of truth
+├── instrument_config.py            # shared 16-instrument universe, cost models, sizing constants
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
 ├── ingest_kraken_gbp_csv.py        # Kraken bulk CSV loader for GBP-crypto, quarterly + pre-2023 'historical' folder
 ├── run_validation_hierarchy_real_data.py  # drives all 16 sandbox instruments through Tiers 0-4
@@ -52,12 +53,10 @@ fx_trader/
 
 ```bash
 pip install -r requirements.txt
-python run_backtest_demo.py            # synthetic FX, SMA crossover, full cost model
+python run_strategy_demo.py            # synthetic FX; set STRATEGY_NAME (SMA / RSI / Bollinger)
 python run_crypto_backtest_demo.py     # synthetic crypto, percentage-based costs
-python run_rsi_demo.py                 # synthetic FX, RSI oversold/overbought reversal
 python run_macd_demo.py                # synthetic FX, MACD crossover - with vs without RSI filter
 python run_confluence_demo.py          # synthetic FX, RSI+MACD independent confluence across window sizes
-python run_bollinger_demo.py           # synthetic FX, Bollinger Band mean-reversion
 python run_walk_forward_demo.py
 python run_sensitivity_demo.py
 python run_bootstrap_demo.py

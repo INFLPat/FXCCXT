@@ -3,7 +3,7 @@ tests/test_strategy_clustering.py
 
 Hand-verified tests for both cross-strategy correlation mechanisms in
 backtest/strategy_clustering.py - see that module's docstring and
-SUBTASK_CROSS_STRATEGY_CORRELATION.md for the full design.
+CONTEXT_HANDOFF.md Section 4e for the full design/decision.
 
 Run: python -m tests.test_strategy_clustering
 """

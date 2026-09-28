@@ -18,7 +18,8 @@ JSON payload shape:
   "commit_message": "one-line summary",
   "operations": [
     {"action": "create", "file": "fx_trader/foo.py", "content": "..."},
-    {"action": "patch",  "file": "README.md", "old": "...", "new": "..."}
+    {"action": "patch",  "file": "README.md", "old": "...", "new": "..."},
+    {"action": "delete", "file": "fx_trader/old_file.py"}
   ]
 }
 Every "file" path is relative to repo root. "create" overwrites if the
@@ -179,6 +180,21 @@ def apply_patch_op(op: dict, dry_run: bool) -> str | None:
     return op["file"]
 
 
+def apply_delete(op: dict, dry_run: bool) -> str | None:
+    """Removes a file. Skips (never guesses) if it doesn't exist."""
+    assert "file" in op, "delete op requires 'file'"
+    target = REPO_ROOT / op["file"]
+    if not target.exists():
+        print(f"SKIP {op['file']}: file not found")
+        return None
+    if dry_run:
+        print(f"[DRY RUN] {op['file']} would be DELETED")
+        return None
+    target.unlink()
+    print(f"DELETED  {op['file']}")
+    return op["file"]
+
+
 def apply_operations(operations: list[dict], dry_run: bool) -> list[str]:
     assert operations, "apply_operations requires at least one operation"
     touched: list[str] = []
@@ -188,6 +204,8 @@ def apply_operations(operations: list[dict], dry_run: bool) -> list[str]:
             result = apply_create(op, dry_run)
         elif action == "patch":
             result = apply_patch_op(op, dry_run)
+        elif action == "delete":
+            result = apply_delete(op, dry_run)
         else:
             print(f"SKIP unknown action {action!r} for {op.get('file', '?')}")
             result = None

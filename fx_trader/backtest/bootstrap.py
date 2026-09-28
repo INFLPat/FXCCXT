@@ -39,6 +39,8 @@ from dataclasses import dataclass, field
 from backtest.engine import BacktestResult, Trade
 from backtest.metrics import compute_metrics
 
+MAX_ITERATIONS = 50_000  # explicit ceiling, independent of any caller's own limit
+
 TRACKED_METRICS = (
     "total_return_pct", "max_drawdown_pct", "win_rate_pct", "profit_factor", "ending_balance",
     "trade_expectancy", "trade_expectancy_pct", "payoff_ratio", "recovery_factor",
@@ -181,6 +183,7 @@ def run_bootstrap(
 ) -> BootstrapResult:
     if method not in ("resample", "shuffle"):
         raise ValueError(f"method must be 'resample' or 'shuffle', got '{method}'")
+    assert n_iterations <= MAX_ITERATIONS, f"n_iterations={n_iterations} exceeds MAX_ITERATIONS={MAX_ITERATIONS}"
 
     closed_trades = [t for t in trades if not t.is_open]
     if len(closed_trades) < 2:

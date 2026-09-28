@@ -6,8 +6,7 @@ across time - CONFIDENCE_SIZING_DESIGN.md-adjacent, but not specific to
 scoring: this is the shared abstraction both out-of-time validation
 (run_out_of_time_validation.py) and period-comparison visualization
 (visualize_period_comparison.py) build on, so the two don't duplicate
-period-chunking logic - see SUBTASK_VISUALIZATION.md for the full design
-and why this was factored out rather than left inline in one script.
+period-chunking logic - see CONTEXT_HANDOFF.md Section 4e for the design.
 
 Per your instruction: concentrate on CALENDAR-YEAR comparison for now
 (`calendar_year_periods`), but keep the shape flexible for what's

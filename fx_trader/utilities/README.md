@@ -39,7 +39,7 @@ python3 fx_trader/utilities/apply_patch.py ~/Downloads/patch.json --dry-run
    (abort / show more detail / a safe fixed action / type a custom `git`
    command) and re-checks after each choice, up to 5 attempts.
 2. **Applies every operation** in the payload - `create` (full file,
-   overwrites if present) or `patch` (exact old-text -> new-text, only if
+   overwrites if present), `delete`, or `patch` (exact old-text -> new-text, only if
    the old text matches the file's current content EXACTLY ONCE; anything
    else is skipped and reported, never guessed).
 3. **Runs every `fx_trader/tests/test_*.py` module.** Any failure stops
@@ -84,6 +84,7 @@ an app) - a few clicks, no code, ask if you want the exact steps.
 
 - `file` paths are always relative to the **repo root** (`~/FXCCXT`), not
   `fx_trader/` - e.g. `"fx_trader/backtest/engine.py"` or `"README.md"`.
+- `delete` removes a file (skipped and reported if absent); the deletion is staged with the commit.
 - `create` always overwrites if the file already exists (logged as
   `OVERWROTE`, not silently).
 - `patch`'s `old` must appear in the target file's CURRENT content exactly

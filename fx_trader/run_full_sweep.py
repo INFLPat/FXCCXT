@@ -13,7 +13,7 @@ real sandbox instruments through the Tier 0-4 hierarchy, plus the Section
 
 import time
 
-from backtest.engine import BacktestEngine, CostModel
+from backtest.engine import BacktestEngine
 from backtest.portfolio import compute_portfolio_metrics
 from backtest.sensitivity import run_sensitivity_analysis
 from backtest.validation_orchestrator import (
@@ -25,6 +25,7 @@ from backtest.validation_orchestrator import (
 )
 from data.run_store import RunStore
 from data.store import FxStore
+from instrument_config import INSTRUMENTS, STARTING_BALANCE, TARGET_NOTIONAL, WINDOW_SIZES
 from strategy.bollinger_strategy import BollingerBandsStrategy
 from strategy.macd_strategy import MacdStrategy
 from strategy.rsi_macd_confluence import RsiMacdConfluenceStrategy
@@ -34,36 +35,6 @@ from strategy.sma_crossover import SmaCrossoverStrategy
 
 SANDBOX_DB = f"sqlite:///{sandbox_db_path(GLOBAL_START, discover_sandbox_end())}"
 RUNS_DB = "sqlite:///data/full_sweep_runs.db"
-
-TARGET_NOTIONAL = 1_000.0
-STARTING_BALANCE = 10_000.0
-WINDOW_SIZES = (1000, 300)
-
-FX_COST_MODEL = CostModel(commission_per_unit=0.00002, slippage_pips=1.0, pip_size=0.0001)
-FX_COST_MODEL_JPY = CostModel(commission_per_unit=0.00002, slippage_pips=1.0, pip_size=0.01)
-CRYPTO_COST_MODEL = CostModel(commission_pct=0.001, slippage_pct=0.0005)
-
-FX_PPY = 252 * 24
-CRYPTO_PPY = 365 * 24
-
-INSTRUMENTS = [
-    ("GBP_USD", "H1", FX_COST_MODEL, FX_PPY),
-    ("EUR_GBP", "H1", FX_COST_MODEL, FX_PPY),
-    ("GBP_JPY", "H1", FX_COST_MODEL_JPY, FX_PPY),
-    ("GBP_CHF", "H1", FX_COST_MODEL, FX_PPY),
-    ("EUR_USD", "H1", FX_COST_MODEL, FX_PPY),
-    ("USD_JPY", "H1", FX_COST_MODEL_JPY, FX_PPY),
-    ("USD_CHF", "H1", FX_COST_MODEL, FX_PPY),
-    ("USD_CAD", "H1", FX_COST_MODEL, FX_PPY),
-    ("BTC/USDT", "1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-    ("ETH/USDT", "1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-    ("XRP/USDT", "1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-    ("LTC/USDT", "1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-    ("BTC/GBP", "1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-    ("ETH/GBP", "1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-    ("XRP/GBP", "1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-    ("LTC/GBP", "1h", CRYPTO_COST_MODEL, CRYPTO_PPY),
-]
 
 STRATEGIES = [
     ("SmaCrossoverStrategy", SmaCrossoverStrategy, {

@@ -51,7 +51,7 @@ BOOTSTRAP_METHOD_SERVICE_TIER: dict[str, ServiceTier] = {
 ROLLING_METRICS_SERVICE_TIER = ServiceTier.GOLD
 PORTFOLIO_ANALYSIS_SERVICE_TIER = ServiceTier.GOLD
 # Period-comparison visualization (visualize_period_comparison.py,
-# SUBTASK_VISUALIZATION.md) - static images are cheap and available by
+# CONTEXT_HANDOFF.md Section 4e) - static images are cheap and available by
 # default; the interactive version is richer (hover, full-resolution
 # equity curve, toggle between views) and gated the same way rolling/
 # portfolio diagnostics already are, for consistency, not a new pattern.

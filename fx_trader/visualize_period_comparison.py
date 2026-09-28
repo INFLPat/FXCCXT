@@ -4,7 +4,7 @@ visualize_period_comparison.py
 Renders BOTH a static image (matplotlib PNG - cheap, default, bronze-tier
 per backtest/service_tiers.py's convention) and an interactive chart
 (self-contained HTML + Chart.js - gold-tier, richer, reusable pattern for
-a future live dashboard per ROADMAP.md Section 5) from the SAME
+a future live dashboard per ROADMAP.md Section 6) from the SAME
 underlying comparison data (backtest/period_comparison.py). Two views per
 (strategy, instrument, params), matching the "long phases and short
 phases" framing:
@@ -36,11 +36,12 @@ import matplotlib
 matplotlib.use("Agg")  # no display needed - this generates files, never shows a window
 import matplotlib.pyplot as plt
 
-from backtest.engine import BacktestEngine, CostModel
+from backtest.engine import BacktestEngine
 from backtest.period_comparison import compare_periods
 from backtest.periods import calendar_year_periods
 from backtest.rolling import compute_rolling_metrics
 from data.store import FxStore
+from instrument_config import FX_COST_MODEL_JPY, FX_PPY
 from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
 from strategy.rsi_strategy import RsiStrategy
 
@@ -52,8 +53,8 @@ STRATEGY_FACTORY = RsiStrategy
 PARAMS = {"period": 14, "oversold": 30, "overbought": 75}
 INSTRUMENT = "GBP_JPY"
 GRANULARITY = "H1"
-COST_MODEL = CostModel(commission_per_unit=0.00002, slippage_pips=1.0, pip_size=0.01)
-PERIODS_PER_YEAR = 252 * 24
+COST_MODEL = FX_COST_MODEL_JPY
+PERIODS_PER_YEAR = FX_PPY
 
 SANDBOX_DB = f"sqlite:///{sandbox_db_path(GLOBAL_START, discover_sandbox_end())}"  # dynamically named, auto-tracks the Kraken-bounded window
 OUTPUT_DIR = Path("charts")
@@ -120,7 +121,7 @@ def render_long_phase_static(store: FxStore, comparison, output_path: Path) -> N
 def render_interactive_html(comparison, store: FxStore, output_path: Path) -> None:
     """One self-contained HTML file (Chart.js via CDN) with BOTH views as
     toggleable tabs - gold-tier per service_tiers.py's convention (see
-    SUBTASK_VISUALIZATION.md), same underlying data as the two PNGs."""
+    service_tiers.py), same underlying data as the two PNGs."""
     valid = comparison.valid_rows()
     period_labels = [r.period.label for r in valid]
     period_returns = [r.metrics.total_return_pct for r in valid]

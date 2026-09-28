@@ -59,7 +59,8 @@ def _find_quarter_folders(csv_dir: Path) -> list[tuple[int, int]]:
     assert csv_dir is not None, "_find_quarter_folders requires a csv_dir"
     found: list[tuple[int, int]] = []
     if csv_dir.exists():
-        for entry in sorted(csv_dir.iterdir()):
+        for i, entry in enumerate(sorted(csv_dir.iterdir())):
+            assert i < MAX_QUARTER_FOLDERS * 10, f"{csv_dir} has too many entries - explicit ceiling exceeded"
             if not entry.is_dir():
                 continue
             m = QUARTER_FOLDER_RE.match(entry.name)

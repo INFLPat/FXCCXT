@@ -2,9 +2,7 @@
 tests/test_router_multi_exchange.py
 
 Proves BrokerRouter routes to the better-priced of two exchanges quoting the
-same instrument differently - more meaningful for crypto than FX, since real
-cross-exchange crypto price gaps are often larger than fraction-of-a-pip FX
-broker differences.
+same instrument differently.
 
 Run: python -m tests.test_router_multi_exchange
 """
