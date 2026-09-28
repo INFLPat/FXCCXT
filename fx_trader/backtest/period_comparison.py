@@ -6,7 +6,7 @@ backtest/periods.py) and collects comparable metrics into one structured
 result - the shared data layer behind visualize_period_comparison.py's
 static and interactive rendering. Deliberately separate from rendering:
 this module has no plotting/HTML code at all, so a future consumer (a
-live dashboard, ROADMAP.md Section 5) can reuse the SAME comparison data
+live dashboard, ROADMAP.md Section 6) can reuse the SAME comparison data
 without importing matplotlib or any rendering dependency.
 """
 

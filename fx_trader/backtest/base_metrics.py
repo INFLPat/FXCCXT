@@ -17,7 +17,7 @@ magnitude number), DRAWDOWN-SHAPE (how painful is the ride), COST-REALISM
 INFORMATIONAL-ONLY (Kelly - not a weight input). The design doc's existing
 leaning (point estimate x trust discount) is MAGNITUDE x RELIABILITY,
 already validated this session via the CI-lower-bound fix
-(SUBTASK_CROSS_STRATEGY_CORRELATION.md's sibling defect). This module adds
+(CONTEXT_HANDOFF.md Section 4d). This module adds
 the other meaningful cross-role blend that was previously a total gap:
 MAGNITUDE x COST-REALISM - nothing in the current design discounted a
 scoring weight for cost drag, even though a strategy can have a great
