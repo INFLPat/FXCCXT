@@ -236,6 +236,10 @@ def run_sensitivity_analysis(
     for values in value_lists:
         grid_size *= len(values)
     assert grid_size <= MAX_GRID_SIZE, f"grid of {grid_size} combinations exceeds MAX_GRID_SIZE={MAX_GRID_SIZE}"
+    grid_size = 1
+    for values in value_lists:
+        grid_size *= len(values)
+    assert grid_size <= MAX_GRID_SIZE, f"grid of {grid_size} combinations exceeds MAX_GRID_SIZE={MAX_GRID_SIZE}"
 
     grid_points: list[GridPointResult] = []
     for combo in itertools.product(*value_lists):

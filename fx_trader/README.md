@@ -19,6 +19,7 @@ fx_trader/
 ├── ROADMAP.md                      # sequenced build/test plan, risk register, sandbox status
 ├── sandbox_config.py               # shared sandbox window/filename source of truth
 ├── instrument_config.py            # shared 16-instrument universe, cost models, sizing constants
+├── instrument_config.py            # shared 16-instrument universe, cost models, sizing constants
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
 ├── ingest_kraken_gbp_csv.py        # Kraken bulk CSV loader for GBP-crypto, quarterly + pre-2023 'historical' folder
 ├── run_validation_hierarchy_real_data.py  # drives all 16 sandbox instruments through Tiers 0-4

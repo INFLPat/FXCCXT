@@ -195,6 +195,21 @@ def apply_delete(op: dict, dry_run: bool) -> str | None:
     return op["file"]
 
 
+def apply_delete(op: dict, dry_run: bool) -> str | None:
+    """Removes a file. Skips (never guesses) if it doesn't exist."""
+    assert "file" in op, "delete op requires 'file'"
+    target = REPO_ROOT / op["file"]
+    if not target.exists():
+        print(f"SKIP {op['file']}: file not found")
+        return None
+    if dry_run:
+        print(f"[DRY RUN] {op['file']} would be DELETED")
+        return None
+    target.unlink()
+    print(f"DELETED  {op['file']}")
+    return op["file"]
+
+
 def apply_operations(operations: list[dict], dry_run: bool) -> list[str]:
     assert operations, "apply_operations requires at least one operation"
     touched: list[str] = []

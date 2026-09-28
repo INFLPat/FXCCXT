@@ -85,6 +85,7 @@ an app) - a few clicks, no code, ask if you want the exact steps.
 - `file` paths are always relative to the **repo root** (`~/FXCCXT`), not
   `fx_trader/` - e.g. `"fx_trader/backtest/engine.py"` or `"README.md"`.
 - `delete` removes a file (skipped and reported if absent); the deletion is staged with the commit.
+- `delete` removes a file (skipped and reported if absent); the deletion is staged with the commit.
 - `create` always overwrites if the file already exists (logged as
   `OVERWROTE`, not silently).
 - `patch`'s `old` must appear in the target file's CURRENT content exactly

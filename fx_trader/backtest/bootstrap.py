@@ -184,6 +184,7 @@ def run_bootstrap(
     if method not in ("resample", "shuffle"):
         raise ValueError(f"method must be 'resample' or 'shuffle', got '{method}'")
     assert n_iterations <= MAX_ITERATIONS, f"n_iterations={n_iterations} exceeds MAX_ITERATIONS={MAX_ITERATIONS}"
+    assert n_iterations <= MAX_ITERATIONS, f"n_iterations={n_iterations} exceeds MAX_ITERATIONS={MAX_ITERATIONS}"
 
     closed_trades = [t for t in trades if not t.is_open]
     if len(closed_trades) < 2:
