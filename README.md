@@ -1,4 +1,5 @@
 <!-- root_readme (repo root: ~/FXCCXT/README.md) -->
+<!-- version: 260929 -->
 # FXCCXT
 
 Backtestable, cost-aware FX and crypto trading analysis pipeline: historical
@@ -72,6 +73,14 @@ cutoff mid-reply would also cut off the marker - its absence isn't proof
 of failure, only its presence is proof of real completion. This is the
 default across every chat in this project already, not something that
 needs to be requested each time.
+
+### File versioning (standard, from 260929)
+
+Every file created or edited carries a `YYMMDD` version stamp; no stamp means legacy, stamped when next touched. Importable `.py`, `run_*.py`, tests: stable name + first-line `# version: YYMMDD`. Cross-referenced docs and READMEs: stable name + `<!-- version: YYMMDD -->` first line (READMEs: directly under the marker line). Generated or transient files (patch payloads, logs, charts, DB snapshots): dated filename, e.g. `patch_260929.json`. Full rule and rationale: `fx_trader/CONTEXT_HANDOFF.md` Working Conventions.
+
+### Next-chat handoff (standard, every session)
+
+Every session ends with: changed files by full repo path; a drafted opening message for the next one-topic chat; the exact files to attach to that chat (a long list means the scope is too big - split it); and what to apply, push and sync. One topic per chat, finished inside one 24-hour window.
 
 ### README marker lines (standard, every README.md in this repo)
 

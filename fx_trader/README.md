@@ -1,4 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
+<!-- version: 260929 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -49,6 +50,10 @@ fx_trader/
 ├── utilities/                      # apply_patch.py - session-handoff tool, see utilities/README.md
 └── run_*.py                        # single-instrument synthetic-data demos
 ```
+
+## File versioning
+
+Files carry a `YYMMDD` version stamp (first-line `# version:` in code, `<!-- version: -->` in docs); generated files use dated filenames. Rule and rationale: `CONTEXT_HANDOFF.md` Working Conventions (from 260929).
 
 ## Running it
 

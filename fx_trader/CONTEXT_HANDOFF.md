@@ -1,3 +1,4 @@
+<!-- version: 260929 -->
 # CONTEXT HANDOFF - FX/Crypto Trading Analysis Project
 
 Read before touching code. Conventions (FNORD, handoff, de-bloat) are in
@@ -19,6 +20,10 @@ UK GDPR). Core currencies: GBP (primary), USD, EUR.
 - **Check in before heavy tasks** (scripts, file generation, images): why, and the lighter alternatives. Proceed only if none is reasonable.
 - **Correct, don't accumulate**: when evidence contradicts a doc, fix it in place. Keep worked examples only while informative.
 - **One canonical script/module** over near-duplicates, unless real functionality differs. Shared constants live in `instrument_config.py` / `sandbox_config.py`.
+- **File versioning (from 260929)**: every file created or edited carries a `YYMMDD` version stamp; a file with no stamp is legacy (pre-260929) and is stamped when next touched. By type: (a) importable `.py` modules, `run_*.py` and tests keep a stable name plus a first-line `# version: YYMMDD` comment, bumped on each edit; (b) cross-referenced docs (`CONTEXT_HANDOFF.md`, `ROADMAP.md`, `VALIDATION_HIERARCHY.md`, `CONFIDENCE_SIZING_DESIGN.md`) keep a stable name plus a first-line `<!-- version: YYMMDD -->`; READMEs keep the name and carry the version line directly under their marker line; (c) generated or transient files (patch payloads, run logs, charts, DB snapshots, exports, one-off snapshots) use a dated filename `<name>_YYMMDD.<ext>`. Why (a)/(b) are not renamed: a dated name breaks imports and GitHub's README landing page and forces every cross-reference to be re-patched on each edit (found 260929).
+- **End-of-chat handoff**: every session ends with (1) changed files by full repo path, (2) a drafted opening message for the next one-topic chat, (3) the exact list of files to attach to it (a long list means the scope is too big; split it), (4) what to apply, push and sync.
+- **One topic per chat**, finished inside one 24-hour window; model (Haiku or Sonnet) per chat is recorded in `ROADMAP.md` Section 4.
+- **Run monitor**: long-running scripts log duration and metadata (utility built in chat 12).
 - **Loops self-protect**: every module's own loops carry an explicit ceiling; never rely on a caller.
 - **"De-bloat the text and code of the project"** = run in order: (1) docs: fold resolved sub-task/discussion docs into this file as decision + evidence, keep settled decisions and open items, trim verbosity; (2) code: Power-of-Ten audit, structural redundancy pass, test docstrings state method only (rationale lives in the source file); (3) Claude-side: reconcile memory, Project Instructions and account preferences against the repo; (4) open resolutions (e.g. duplicate sweep scripts). Ask questions first. Acceptance test for every edit: would a chat seeing only the edited file lose any decision, requirement, open question or verified number? Compare old vs new like-for-like, and execute where possible (behaviour-preservation), before committing. Renumbering a section requires patching every reference to it. Keep patch "old" strings short and single-line where possible - a long multi-line span can silently fail to match if the real file wraps differently than assumed; verify against the actual current text before shipping, and fix a reported skip by shortening the anchor, not lengthening it.
 
@@ -29,6 +34,13 @@ optimum trade moments via multiple complementary strategies (not one
 signal). Near-term: thoroughly-tested single-user pipeline. Long-term:
 multi-user subscription product, UK compliance as a first-order
 constraint throughout.
+
+## 1a. MVP DEFINITION AND DECISIONS SETTLED 260929
+
+- **MVP** = everything needed to trade live, single user, small real fund (about GBP 100-200): validated survivors, cartesian pair work, additional signal generators explored, shadow scoring plus sizing, user risk setting (pulled forward from old Phase 3), minimal dashboard, investor documentation. Full definition, success criteria (operational, not return targets) and the live-trading checklist L1-L16: `ROADMAP.md` Section 1.
+- **Sandbox `sandbox_22Q1to26Q1.db` is final** (Kraken 26Q2 unpublished). Holdout policy inside it: chat 17.
+- **Cartesian currency-pair comparison** (relative-strength ranking, spread mean-reversion, possibly more) is believed to be the core edge. Front-loaded: it starts right after the quick baseline work (chats 11-17), and nothing it would force redoing is built first. Its definition and architecture (chats 18-19) come BEFORE the scoring engine, because `Strategy.on_candle` cannot express cross-instrument signals.
+- **Chat plan, model per chat, attachment lists:** `ROADMAP.md` Section 4.
 
 ## 2. KEY DECISIONS (settled - reopen only with a genuinely new reason)
 
@@ -226,6 +238,11 @@ size, no bare `except: pass`.
 
 ## 6. OPEN THREADS
 
+- Hosting: the live runner needs an always-on host, distinct from the database host (Snowflake Postgres/Neon). User recalls a Vultr vs Neon discussion in another chat that is not in the repo - capture it in chat 30.
+- Post-MVP, with a lawyer and an accountant: compliance work they specify; ISA/tax-wrapper investigation (individual-vs-company and eligible-holdings questions flagged in `ROADMAP.md` Section 5).
+- Investor pack (process explainer, flow chart, market/competitor comparison) runs in parallel; a lawyer reviews return language before external use.
+
+
 - `run_full_sweep.py` needs a permanent home / resolution against
   `run_validation_hierarchy_real_data.py` (does it replace or extend it -
   your call, not made here). `data/full_sweep_runs.db` not yet committed.
@@ -247,6 +264,9 @@ size, no bare `except: pass`.
   on your input, can't run in this sandbox regardless.
 
 ## 7. IMMEDIATE NEXT STEP
+
+**Updated 260929: superseded by `ROADMAP.md` Sections 3-4 (phases and chat-by-chat plan). The paragraph below is the pre-260929 summary; its item (2), acquiring a second out-of-time window, is dropped (26Q2 unpublished, 22Q1-26Q1 is the final sandbox).**
+
 
 Per `CONFIDENCE_SIZING_DESIGN.md`'s phasing plan and `ROADMAP.md`'s
 priority order - see `ROADMAP.md` for the full sequenced plan. Short

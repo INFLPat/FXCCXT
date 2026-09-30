@@ -1,3 +1,4 @@
+<!-- version: 260929 -->
 # Confidence-Weighted Multi-Strategy Sizing - Design Spec
 
 How the five strategies (SMA, RSI, MACD, RSI+MACD confluence, Bollinger)
@@ -311,7 +312,7 @@ real world."
 
 **Phase 2**: pluggable confidence modules, tiered bronze/silver/gold.
 
-**Phase 3**: account-lifecycle caps + risk-appetite slider.
+**Phase 3**: account-lifecycle caps. UPDATED 260929: the risk-appetite slider (user risk setting) moves into the MVP, see `ROADMAP.md` Sections 1 and 3; cartesian pair work and its interface come before the scoring engine.
 
 **Phase 4 / Option C**: explicit regime detection, incl. real MACD/RSI
 divergence detection - future, separate project.
