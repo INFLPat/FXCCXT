@@ -1,7 +1,7 @@
+# version: 260930
 # Local/generated market data - never committed.
 # Real market data has redistribution restrictions and the Claude GitHub
-# integration can't usefully read binary files anyway - see
-# fx_trader/CONTEXT_HANDOFF.md Section 8. Re-upload the .db directly to
+# integration can't usefully read binary files anyway. Re-upload the .db directly to
 # whichever chat needs it instead.
 fx_trader/data/*.db
 fx_trader/data/*.db-journal
@@ -19,6 +19,11 @@ fx_trader/kraken_csv/
 # Keep locally / re-upload to a chat if a specific snapshot matters.
 fx_trader/charts/*.png
 fx_trader/charts/*.html
+
+# Local run-monitor logs (run_monitor.py): generated per run, local only,
+# never the cloud DB. Paste `python run_monitor.py summary <file>` output
+# (or attach the file) to a chat when its timings matter.
+fx_trader/logs/*.jsonl
 
 # Credentials - never commit these, however you choose to set them locally
 .env

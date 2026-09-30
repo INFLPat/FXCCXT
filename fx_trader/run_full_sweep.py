@@ -1,3 +1,4 @@
+# version: 260930
 """
 run_full_sweep.py
 
@@ -26,6 +27,7 @@ from backtest.validation_orchestrator import (
 from data.run_store import RunStore
 from data.store import FxStore
 from instrument_config import INSTRUMENTS, STARTING_BALANCE, TARGET_NOTIONAL, WINDOW_SIZES
+from run_monitor import count, item, monitored_run, note
 from strategy.bollinger_strategy import BollingerBandsStrategy
 from strategy.macd_strategy import MacdStrategy
 from strategy.rsi_macd_confluence import RsiMacdConfluenceStrategy
@@ -152,8 +154,15 @@ def correlation_for_instrument(candles, cost_model, periods_per_year):
     return compute_portfolio_metrics(aligned, periods_per_year=periods_per_year)
 
 
+@monitored_run("run_full_sweep")
 def main():
     store = FxStore(database_url=SANDBOX_DB)
+    note("sandbox_db", SANDBOX_DB)
+    note("runs_db", RUNS_DB)
+    note("sandbox_start", GLOBAL_START.isoformat())
+    note("sandbox_end", discover_sandbox_end().isoformat())
+    note("n_strategies", len(STRATEGIES))
+    note("n_instruments", len(INSTRUMENTS))
     run_store = RunStore(database_url=RUNS_DB)
 
     print(f"{'strategy':<26} {'instrument':<10} {'grid':>5} {'T1':>4} {'T2':>4} {'T3':>4} {'T4':>4} {'sec':>7}")
@@ -174,11 +183,16 @@ def main():
             r = run_one(instrument, granularity, cost_model, periods_per_year, candles, strat_name, strat_factory, grid, run_store)
             elapsed = time.time() - t0
             r["elapsed"] = elapsed
+            item(f"{strat_name}/{instrument}", elapsed,
+                 tier1=r["tier1"], tier2=r["tier2"], tier3=r["tier3"], tier4=r["tier4"])
+            count("strategy_instrument_runs")
             all_results.append(r)
             print(f"{strat_name:<26} {instrument:<10} {r['grid_size']:>5} {r['tier1']:>4} {r['tier2']:>4} "
                   f"{r['tier3']:>4} {r['tier4']:>4} {elapsed:>7.1f}")
 
         corr_matrices[instrument] = correlation_for_instrument(candles, cost_model, periods_per_year)
+        count("candles", len(candles))
+        count("instruments")
 
     total_elapsed = time.time() - total_start
     print("-" * 80)
@@ -186,6 +200,7 @@ def main():
 
     print("\n=== TIER 4 SURVIVORS ===")
     survivors = [r for r in all_results if r["tier4"] > 0]
+    note("tier4_survivor_pairs", len(survivors))
     if not survivors:
         print("None.")
     for r in survivors:

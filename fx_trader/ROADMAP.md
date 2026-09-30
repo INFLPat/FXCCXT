@@ -97,9 +97,9 @@ Rules: one topic per chat, finished inside one 24h window. Always attach `CONTEX
 |---|---|---|---|---|
 | 11 | Housekeeping and versioning rollout: dupes (apply_delete, sensitivity/bootstrap assertions, README lines), stale docstring refs, README layout, five-vs-three strategies wording. Deletions/doc fixes only in rework-exposed modules | S | utilities/apply_patch.py, utilities/README.md, backtest/sensitivity.py, backtest/bootstrap.py, README.md, fx_trader/README.md, run_validation_hierarchy_real_data.py, run_out_of_time_validation.py | - |
 | 12 | Run-monitor utility (duration/metadata log) | S | run_full_sweep.py | 11 |
-| 13 | Reproduce 7 survivors on 2025 H2 | M | old and current run_full_sweep.py, instrument_config.py, sandbox_config.py; user pastes terminal output | 12 |
-| 14 | Cross-rate arithmetic and timestamp-alignment audit script | M | data/store.py, sandbox_config.py, instrument_config.py, fetch_sandbox_data.py | 12 |
-| 15 | Full-window compute dry run | S | run_full_sweep.py; user pastes output | 13 |
+| 13 | Reproduce 7 survivors on 2025 H2 (re-windowed sweep: add window-start/end `note()` calls via run_monitor) | M | old and current run_full_sweep.py, instrument_config.py, sandbox_config.py; user pastes terminal output | 12 |
+| 14 | Cross-rate arithmetic, timestamp-alignment and TIMEZONE audit script (London-vs-UTC policy, OANDA candle alignment, `periods.py` boundaries); adopts run_monitor from creation; `fetch_sandbox_data.py` adopts it if touched | M | data/store.py, sandbox_config.py, instrument_config.py, fetch_sandbox_data.py | 12 |
+| 15 | Full-window compute dry run | S | run_full_sweep.py; user pastes `python run_monitor.py summary <log>` output or attaches the day's `logs/run_log_*.jsonl` | 13 |
 | 16 | Out-of-time frozen-candidate replay: run and interpret | M | run_out_of_time_validation.py, backtest/periods.py, backtest/validation_orchestrator.py | 13, 14, 15 |
 | 17 | Holdout policy inside the sandbox (matters most for cartesian) | S | none | 16 |
 | 18 | Cartesian definition (relative strength, spread mean-reversion, others); no code | L | CONFIDENCE_SIZING_DESIGN.md, backtest/portfolio.py | 14, 17 |
@@ -118,6 +118,17 @@ Rules: one topic per chat, finished inside one 24h window. Always attach `CONTEX
 | 31 | OANDA get_quote/place_market_order practice test | M | brokers/oanda.py, brokers/base.py | 30 |
 | 32 | ccxt testnet order test | M | brokers/ccxt_broker.py | 30 |
 | 33 | Cost-model update (real fees, financing, small-account floors) and re-run of cartesian conclusions | M | backtest/engine.py (CostModel), instrument_config.py | 30 |
+
+**Run-monitor adoption (from chat 12; API in `run_monitor.py`'s docstring). Rule: every new long-running script adopts it from creation. Status of everything else:**
+- ADOPTED: `run_full_sweep.py` (chat 12).
+- Chat 13: re-windowed `run_full_sweep.py` - add window start/end notes. The old 2025 H2 script copy is unmonitored by definition.
+- Chat 14: new audit script adopts from creation; `fetch_sandbox_data.py` adopts if touched, else at its next re-run (sandbox is final, so unlikely).
+- Chat 16: `run_out_of_time_validation.py` adopts when run (one `item` per candidate x window; `count` windows/candles).
+- Chats 21-25 (cartesian): every new script and sweep adopts from creation; one `item` per pair/signal/grid combination; `count` candles and legs. The 100,000 item-line ceiling may bite; the end-record summary stays exact.
+- Chats 26, 30-33 (trade frequency, `fetch_real_cost_data.py`, OANDA/ccxt tests): adopt from creation; network latency via `item`.
+- Chat 29 (de-bloat #2): first resolve `run_validation_hierarchy_real_data.py` vs `run_full_sweep.py`; adopt only in the survivor. `visualize_period_comparison.py` and `ingest_kraken_gbp_csv.py`: adopt if kept and run in batch.
+- P7 / L8 (decided chat 30): the always-on live/paper runner is NOT a fit (needs heartbeats/events, not one run record). Keep separate from the L6 audit log.
+- Deliberately NOT adopted: `run_*_demo.py` (synthetic, seconds-long).
 
 Later (detail expands as they approach): P5 onward per Section 3.
 
@@ -159,6 +170,7 @@ Mini-pass in chat 11; full pass in chat 29 (after the cartesian go/no-go and def
 | `CcxtBroker` never run against a real exchange | Operational | Medium | Chat 32 |
 | Broker/exchange UK access and legality unchecked | Regulatory | Medium | Chat 30 |
 | Runner hosting undecided | Operational | Medium | Chat 30 |
+| Timezone policy (London vs UTC) unaudited across data and periods | Accuracy | Medium | Chat 14 |
 | Secrets via plain env vars | Security | Low now, grows | L13 |
 | No audit trail of live orders | Security/Regulatory | Medium | L6 (`fills` table is the foundation) |
 | Unpinned `requirements.txt`; no CI | Security/Efficiency | Low-Medium | L13, L14 |

@@ -17,7 +17,7 @@ This repo is the source of truth for code between Claude.ai chat sessions.
 plan.
 
 Every session: new chat pulls the repo into context -> Claude prepares a
-`patch_YYMMDD.json` in its own sandbox -> you apply it with
+`patch_YYMMDD_chatNN.json` in its own sandbox -> you apply it with
 `fx_trader/utilities/apply_patch.command` (tests run, then a commit is made)
 -> you `git push` -> you refresh the Project's Context panel so the next chat
 sees it. Never push a stale bulk copy without confirming the chat's context
@@ -29,7 +29,7 @@ chat.
 At the end of any session that changed files, Claude delivers:
 
 1. A **list of every changed/created/deleted file, by full repo path**.
-2. A single **`patch_YYMMDD.json`** (session date) - no zips. Operations:
+2. A single **`patch_YYMMDD_chatNN.json`** (session date and chat number, e.g. `patch_260930_chat12.json`) - no zips. Operations:
    `create` (full file, overwrites), `patch` (exact old-text -> new-text, must
    match the current file EXACTLY ONCE or it is skipped and reported) and
    `delete`. `create` is the default for new files or substantial rewrites;
@@ -63,7 +63,7 @@ needs to be requested each time.
 
 ### File versioning (standard, from 260929)
 
-Every file created or edited carries a `YYMMDD` version stamp; no stamp means legacy, stamped when next touched. Importable `.py`, `run_*.py`, tests: stable name + `# version: YYMMDD` on line 1 (line 2 under a shebang). Cross-referenced docs and READMEs: stable name + `<!-- version: YYMMDD -->` first line (READMEs: directly under the marker line). Generated or transient files (patch payloads, logs, charts, DB snapshots): dated filename, e.g. `patch_260930.json`. Full rule, rationale and the placement details settled 260930: `fx_trader/CONTEXT_HANDOFF.md` Working Conventions.
+Every file created or edited carries a `YYMMDD` version stamp; no stamp means legacy, stamped when next touched. Importable `.py`, `run_*.py`, tests: stable name + `# version: YYMMDD` on line 1 (line 2 under a shebang). Cross-referenced docs and READMEs: stable name + `<!-- version: YYMMDD -->` first line (READMEs: directly under the marker line). Generated or transient files (patch payloads, logs, charts, DB snapshots): dated filename, e.g. `patch_260930_chat12.json` (patch payloads also carry the chat number, from chat 12). `.gitignore` and other `#`-comment config files carry `# version: YYMMDD` on line 1. Full rule, rationale and the placement details settled 260930: `fx_trader/CONTEXT_HANDOFF.md` Working Conventions.
 
 ### Next-chat handoff (standard, every session)
 

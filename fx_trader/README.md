@@ -21,6 +21,7 @@ fx_trader/
 ├── requirements.txt            # pip dependencies (unpinned - see ROADMAP.md L13)
 ├── sandbox_config.py               # shared sandbox window/filename source of truth
 ├── instrument_config.py            # shared 16-instrument universe, cost models, sizing constants
+├── run_monitor.py                  # run monitor: duration/metadata JSONL logs into logs/ (gitignored); see its docstring
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
 ├── ingest_kraken_gbp_csv.py        # Kraken bulk CSV loader for GBP-crypto, quarterly + pre-2023 'historical' folder
 ├── run_validation_hierarchy_real_data.py  # drives all 16 sandbox instruments through Tiers 0-4
@@ -58,7 +59,7 @@ fx_trader/
 └── run_*.py                        # synthetic-data demos (the real-sandbox run_*.py scripts are listed above)
 ```
 
-Local-only, gitignored (not in the tree above): `data/*.db`, `kraken_csv/`, `charts/*.png|html`, `.env`. See `.gitignore`.
+Local-only, gitignored (not in the tree above): `data/*.db`, `kraken_csv/`, `charts/*.png|html`, `logs/*.jsonl`, `.env`. See `.gitignore`.
 
 ## File versioning
 

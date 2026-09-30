@@ -15,7 +15,7 @@ chmod +x fx_trader/utilities/apply_patch.command
 
 ## Every session
 
-1. At the end of a chat, Claude gives you a `patch_YYMMDD.json` file (see shape
+1. At the end of a chat, Claude gives you a `patch_YYMMDD_chatNN.json` file (see shape
    below) instead of a full zip.
 2. Save it anywhere (e.g. `~/Downloads/patch.json`).
 3. Run it one of two ways:
