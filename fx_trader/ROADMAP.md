@@ -1,7 +1,7 @@
-<!-- version: 260929 -->
+<!-- version: 260930 -->
 # Roadmap
 
-Read after `CONTEXT_HANDOFF.md` and `CONFIDENCE_SIZING_DESIGN.md`. Rewritten 260929 (chat 10). Contents: 0 baseline, 1 MVP, 2 sandbox and validation data, 3 phases, 4 chat plan, 5 parallel/post-MVP, 6 de-bloat, 7 risk register, 8 extras.
+Read after `CONTEXT_HANDOFF.md` and `CONFIDENCE_SIZING_DESIGN.md`. Rewritten 260929 (chat 10); housekeeping edits 260930 (chat 11). Contents: 0 baseline, 1 MVP, 2 sandbox and validation data, 3 phases, 4 chat plan, 5 parallel/post-MVP, 6 de-bloat, 7 risk register, 8 extras.
 
 ## 0. Honest baseline
 
@@ -42,13 +42,13 @@ Read after `CONTEXT_HANDOFF.md` and `CONFIDENCE_SIZING_DESIGN.md`. Rewritten 260
 
 ## 2. Sandbox and validation data
 
-**Development sandbox (DECIDED 260929): `sandbox_22Q1to26Q1.db` is final.** Kraken 26Q2 is unpublished and may not appear; no further quarters are planned. All 16 instruments confirmed aligned on START/END (see `CONTEXT_HANDOFF.md` Section 4).
+**Development sandbox (DECIDED 260929): the sandbox's current window is final.** Kraken 26Q2 is unpublished and may not appear; no further quarters are planned. All 16 instruments confirmed aligned on START/END (see `CONTEXT_HANDOFF.md` Section 4).
 
 **Unseen-data caveat:** out-of-time replay, re-discovery and the base-metric test all consume the existing data. The only genuinely unseen data will be forward paper/live data. Chat 17 decides a holdout policy inside the sandbox (e.g. reserve 2026 Q1 untouched until the final pre-live check). Not decided yet.
 
 **Still open:** (a) compute-budget dry run on the ~4.25-year window (original sweep 186.6s on 6 months; extrapolation of ~25+ min is a guess, run-monitor data will replace it); (b) cross-rate arithmetic validation (GBP_USD x USD_JPY vs GBP_JPY, EUR_USD vs EUR_GBP x GBP_USD) and cross-instrument timestamp alignment - never performed; do before any cross-instrument result is trusted.
 
-**Reproducing the 7 survivors:** the current `run_full_sweep.py` targets the 22Q1-26Q1 DB with no date restriction, so it will NOT reproduce 2025 H2 numbers. Reproduction needs either the original `sandbox_2025h2.db` plus the old script version (held by the user), or a re-windowed sweep (2025-07-01 to 2025-12-31). Survivor table: `CONTEXT_HANDOFF.md` Section 4d.
+**Reproducing the 7 survivors:** the current `run_full_sweep.py` targets the 22Q1-26Q1 DB with no date restriction, so it will NOT reproduce 2025 H2 numbers. Reproduction needs either the original 2025 H2 sandbox database plus the old script version (held by the user), or a re-windowed sweep (2025-07-01 to 2025-12-31). Survivor table: `CONTEXT_HANDOFF.md` Section 4d.
 
 **Out-of-time methodology (two parts, both built):** (1) frozen-candidate replay (`run_out_of_time_validation.py`): the 17 persisted survivors, unchanged params, every window outside 2025 H2, same gate values, no loosening. (2) independent re-discovery (`run_full_sweep.py` on the wider window, restricted to non-2025-H2 windows first), compared by hand with (1). Open questions: does a strong new discovery replace the 17 as the reference set; `RunStore` output naming (`full_sweep_runs.db` vs `validated_runs.db`); whether `MAX_GRID_COMBINATIONS` (200) should rise.
 
@@ -91,33 +91,33 @@ Read after `CONTEXT_HANDOFF.md` and `CONFIDENCE_SIZING_DESIGN.md`. Rewritten 260
 
 ## 4. Chat plan
 
-Rules: one topic per chat, finished inside one 24h window. Always attach `CONTEXT_HANDOFF.md`; attach `ROADMAP.md` only if the chat changes the plan. A long attachment list means the scope is too big: split it (chat 19 is the known exception: a heavy architecture topic). Model is Haiku or Sonnet only. Sizes: S under half a 5-hour window, M about one, L one to two.
+Rules: one topic per chat, finished inside one 24h window. Always attach `CONTEXT_HANDOFF.md`; attach `ROADMAP.md` only if the chat changes the plan. A long attachment list means the scope is too big: split it (chat 19 is the known exception: a heavy architecture topic). All chats run on Sonnet (free tier; context limits rule out Haiku; Opus/Fable unavailable), so there is no per-chat model selection. Sizes (provisional, revisit as progress is monitored): S under half a 5-hour window, M about one, L one to two.
 
-| # | Topic | Model | Size | Attach (besides CONTEXT_HANDOFF.md) | After |
-|---|---|---|---|---|---|
-| 11 | Housekeeping and versioning rollout: dupes (apply_delete, sensitivity/bootstrap assertions, README lines), stale docstring refs, README layout, five-vs-three strategies wording. Deletions/doc fixes only in rework-exposed modules | Haiku | S | utilities/apply_patch.py, utilities/README.md, backtest/sensitivity.py, backtest/bootstrap.py, README.md, fx_trader/README.md, run_validation_hierarchy_real_data.py, run_out_of_time_validation.py | - |
-| 12 | Run-monitor utility (duration/metadata log) | Sonnet | S | run_full_sweep.py | 11 |
-| 13 | Reproduce 7 survivors on 2025 H2 (escalate to Sonnet if they differ) | Haiku | M | old and current run_full_sweep.py, instrument_config.py, sandbox_config.py; user pastes terminal output | 12 |
-| 14 | Cross-rate arithmetic and timestamp-alignment audit script | Sonnet | M | data/store.py, sandbox_config.py, instrument_config.py, fetch_sandbox_data.py | 12 |
-| 15 | Full-window compute dry run | Haiku | S | run_full_sweep.py; user pastes output | 13 |
-| 16 | Out-of-time frozen-candidate replay: run and interpret | Sonnet | M | run_out_of_time_validation.py, backtest/periods.py, backtest/validation_orchestrator.py | 13, 14, 15 |
-| 17 | Holdout policy inside the sandbox (matters most for cartesian) | Sonnet | S | none | 16 |
-| 18 | Cartesian definition (relative strength, spread mean-reversion, others); no code | Sonnet | L | CONFIDENCE_SIZING_DESIGN.md, backtest/portfolio.py | 14, 17 |
-| 19 | Cartesian architecture: Strategy interface vs standalone module, multi-leg Trade/BacktestResult, RunStore schema, orchestrator, PositionManager inputs; no code | Sonnet | L | CONFIDENCE_SIZING_DESIGN.md, strategy/base.py, backtest/engine.py, data/run_store.py, backtest/validation_orchestrator.py | 18 |
-| 20 | Multiple-testing control sized for the cartesian search space (design plus implementation) | Sonnet | M | backtest/validation_orchestrator.py, backtest/sensitivity.py, backtest/bootstrap.py, VALIDATION_HIERARCHY.md | 19 |
-| 21 | Alignment layer and multi-instrument data access (build) | Sonnet | M | data/store.py, backtest/portfolio.py; output of 14 | 19 |
-| 22 | Multi-leg engine/interface extension per chat-19 design; regression: existing suite and sweep byte-identical | Sonnet | L | backtest/engine.py, strategy/base.py, tests/test_engine.py, tests/test_rescale.py | 19, 21 |
-| 23 | Relative-strength currency ranking signal (build and first validation) | Sonnet | M | chat-19 design, chat-21 layer, chat-22 engine | 22 |
-| 24 | Spread mean-reversion signal (build and first validation) | Sonnet | M | as 23 | 22 |
-| 25 | Cartesian through the hierarchy with multiple-testing control; go/no-go review | Sonnet | L | outputs of 23, 24; validation_orchestrator.py | 20, 23, 24 |
-| 26 | Trade-frequency extraction (feeds debounce) | Haiku | S | data/run_store.py; user pastes output | fill-in |
-| 27 | Independent re-discovery on non-training windows (single-instrument plus cartesian candidates) | Sonnet | M | run_full_sweep.py; outputs of 16, 25 | 25 |
-| 28 | Base-metric re-ranking test (deciding test in Section 4e) | Sonnet | M | backtest/base_metrics.py; outputs of 16, 27 | 27 |
-| 29 | Full de-bloat pass #2 | Sonnet | L | per process | 28 |
-| 30 | Broker/account choice (OANDA Standard vs Core, UK crypto exchange access, min order sizes, small-account viability) and hosting (runner host vs database host) | Sonnet | M | CONFIDENCE_SIZING_DESIGN.md; user: budget and restrictions | fill-in |
-| 31 | OANDA get_quote/place_market_order practice test | Sonnet | M | brokers/oanda.py, brokers/base.py | 30 |
-| 32 | ccxt testnet order test | Sonnet | M | brokers/ccxt_broker.py | 30 |
-| 33 | Cost-model update (real fees, financing, small-account floors) and re-run of cartesian conclusions | Sonnet | M | backtest/engine.py (CostModel), instrument_config.py | 30 |
+| # | Topic | Size | Attach (besides CONTEXT_HANDOFF.md) | After |
+|---|---|---|---|---|
+| 11 | Housekeeping and versioning rollout: dupes (apply_delete, sensitivity/bootstrap assertions, README lines), stale docstring refs, README layout, five-vs-three strategies wording. Deletions/doc fixes only in rework-exposed modules | S | utilities/apply_patch.py, utilities/README.md, backtest/sensitivity.py, backtest/bootstrap.py, README.md, fx_trader/README.md, run_validation_hierarchy_real_data.py, run_out_of_time_validation.py | - |
+| 12 | Run-monitor utility (duration/metadata log) | S | run_full_sweep.py | 11 |
+| 13 | Reproduce 7 survivors on 2025 H2 | M | old and current run_full_sweep.py, instrument_config.py, sandbox_config.py; user pastes terminal output | 12 |
+| 14 | Cross-rate arithmetic and timestamp-alignment audit script | M | data/store.py, sandbox_config.py, instrument_config.py, fetch_sandbox_data.py | 12 |
+| 15 | Full-window compute dry run | S | run_full_sweep.py; user pastes output | 13 |
+| 16 | Out-of-time frozen-candidate replay: run and interpret | M | run_out_of_time_validation.py, backtest/periods.py, backtest/validation_orchestrator.py | 13, 14, 15 |
+| 17 | Holdout policy inside the sandbox (matters most for cartesian) | S | none | 16 |
+| 18 | Cartesian definition (relative strength, spread mean-reversion, others); no code | L | CONFIDENCE_SIZING_DESIGN.md, backtest/portfolio.py | 14, 17 |
+| 19 | Cartesian architecture: Strategy interface vs standalone module, multi-leg Trade/BacktestResult, RunStore schema, orchestrator, PositionManager inputs; no code | L | CONFIDENCE_SIZING_DESIGN.md, strategy/base.py, backtest/engine.py, data/run_store.py, backtest/validation_orchestrator.py | 18 |
+| 20 | Multiple-testing control sized for the cartesian search space (design plus implementation) | M | backtest/validation_orchestrator.py, backtest/sensitivity.py, backtest/bootstrap.py, VALIDATION_HIERARCHY.md | 19 |
+| 21 | Alignment layer and multi-instrument data access (build) | M | data/store.py, backtest/portfolio.py; output of 14 | 19 |
+| 22 | Multi-leg engine/interface extension per chat-19 design; regression: existing suite and sweep byte-identical | L | backtest/engine.py, strategy/base.py, tests/test_engine.py, tests/test_rescale.py | 19, 21 |
+| 23 | Relative-strength currency ranking signal (build and first validation) | M | chat-19 design, chat-21 layer, chat-22 engine | 22 |
+| 24 | Spread mean-reversion signal (build and first validation) | M | as 23 | 22 |
+| 25 | Cartesian through the hierarchy with multiple-testing control; go/no-go review | L | outputs of 23, 24; validation_orchestrator.py | 20, 23, 24 |
+| 26 | Trade-frequency extraction (feeds debounce) | S | data/run_store.py; user pastes output | fill-in |
+| 27 | Independent re-discovery on non-training windows (single-instrument plus cartesian candidates) | M | run_full_sweep.py; outputs of 16, 25 | 25 |
+| 28 | Base-metric re-ranking test (deciding test in Section 4e) | M | backtest/base_metrics.py; outputs of 16, 27 | 27 |
+| 29 | Full de-bloat pass #2 | L | per process | 28 |
+| 30 | Broker/account choice (OANDA Standard vs Core, UK crypto exchange access, min order sizes, small-account viability) and hosting (runner host vs database host) | M | CONFIDENCE_SIZING_DESIGN.md; user: budget and restrictions | fill-in |
+| 31 | OANDA get_quote/place_market_order practice test | M | brokers/oanda.py, brokers/base.py | 30 |
+| 32 | ccxt testnet order test | M | brokers/ccxt_broker.py | 30 |
+| 33 | Cost-model update (real fees, financing, small-account floors) and re-run of cartesian conclusions | M | backtest/engine.py (CostModel), instrument_config.py | 30 |
 
 Later (detail expands as they approach): P5 onward per Section 3.
 

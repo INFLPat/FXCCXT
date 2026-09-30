@@ -1,9 +1,10 @@
+# version: 260930
 """
 run_out_of_time_validation.py
 
 Out-of-time validation for the 17 individually-persisted Tier 4 survivor
 runs from the 2025 H2 sweep (ROADMAP.md Section 2). Reads whatever
-multi-year history exists in data/sandbox_history.db and tests every
+multi-year history exists in the sandbox and tests every
 survivor against every WINDOW_SIZE_MONTHS-sized block outside the
 original training window, via backtest/periods.py's shared
 fixed_month_periods() - REFACTORED this session to use that shared
@@ -20,7 +21,7 @@ Two-part methodology (ROADMAP.md Section 2):
    windows and not others is itself informative (which regime does the
    edge hold up in?), not just a pass/fail verdict to average away.
 2. INDEPENDENT RE-DISCOVERY (separate check, unchanged): point
-   run_full_sweep.py's SANDBOX_DB/RUNS_DB at data/sandbox_history.db
+   run_full_sweep.py's SANDBOX_DB/RUNS_DB at the sandbox
    restricted to one window (see FxStore.get_candles(start=, end=)) and
    compare its independently-found survivors to this script's PASS list
    by hand.
@@ -147,7 +148,7 @@ def main():
         print(f"  {strat_name:<26} {instrument:<10} {params_str:<45} {passes}/{len(verdicts)}"
               + ("  <- no windows available yet" if not verdicts else ""))
 
-    print("\nNext: run run_full_sweep.py against data/sandbox_history.db (optionally sliced to one")
+    print("\nNext: run run_full_sweep.py against the sandbox (optionally sliced to one")
     print("window via FxStore.get_candles) for the independent re-discovery check.")
 
 

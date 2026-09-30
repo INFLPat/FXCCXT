@@ -1,3 +1,4 @@
+# version: 260930
 """
 backtest/sensitivity.py
 
@@ -232,10 +233,6 @@ def run_sensitivity_analysis(
     cost_model = cost_model or CostModel()
     param_names = list(param_grid.keys())
     value_lists = [param_grid[name] for name in param_names]
-    grid_size = 1
-    for values in value_lists:
-        grid_size *= len(values)
-    assert grid_size <= MAX_GRID_SIZE, f"grid of {grid_size} combinations exceeds MAX_GRID_SIZE={MAX_GRID_SIZE}"
     grid_size = 1
     for values in value_lists:
         grid_size *= len(values)

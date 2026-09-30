@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# version: 260930
 """
 fx_trader/utilities/apply_patch.py
 
@@ -177,21 +178,6 @@ def apply_patch_op(op: dict, dry_run: bool) -> str | None:
         return None
     target.write_text(text.replace(op["old"], op["new"], 1))
     print(f"PATCHED  {op['file']}")
-    return op["file"]
-
-
-def apply_delete(op: dict, dry_run: bool) -> str | None:
-    """Removes a file. Skips (never guesses) if it doesn't exist."""
-    assert "file" in op, "delete op requires 'file'"
-    target = REPO_ROOT / op["file"]
-    if not target.exists():
-        print(f"SKIP {op['file']}: file not found")
-        return None
-    if dry_run:
-        print(f"[DRY RUN] {op['file']} would be DELETED")
-        return None
-    target.unlink()
-    print(f"DELETED  {op['file']}")
     return op["file"]
 
 

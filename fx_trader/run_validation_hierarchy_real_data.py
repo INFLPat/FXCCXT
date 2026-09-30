@@ -1,8 +1,9 @@
+# version: 260930
 """
 run_validation_hierarchy_real_data.py
 
 Runs SmaCrossoverStrategy through VALIDATION_HIERARCHY.md's Tier 0-4 gate
-against all 16 real sandbox instruments (data/sandbox_2025h2.db). Persists
+against all 16 real sandbox instruments (the sandbox - see sandbox_config.py). Persists
 only Tier 4 survivors via RunStore (data/validated_runs.db).
 
 Position sizing: units_per_trade is set so each trade's opening notional is

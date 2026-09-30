@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 260929 -->
+<!-- version: 260930 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -18,12 +18,15 @@ fx_trader/
 ├── CONFIDENCE_SIZING_DESIGN.md     # Phase 1-4 spec: multi-strategy confidence scoring & position sizing (design only, not built)
 ├── CONTEXT_HANDOFF.md              # current state, read first
 ├── ROADMAP.md                      # sequenced build/test plan, risk register, sandbox status
+├── requirements.txt            # pip dependencies (unpinned - see ROADMAP.md L13)
 ├── sandbox_config.py               # shared sandbox window/filename source of truth
-├── instrument_config.py            # shared 16-instrument universe, cost models, sizing constants
 ├── instrument_config.py            # shared 16-instrument universe, cost models, sizing constants
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
 ├── ingest_kraken_gbp_csv.py        # Kraken bulk CSV loader for GBP-crypto, quarterly + pre-2023 'historical' folder
 ├── run_validation_hierarchy_real_data.py  # drives all 16 sandbox instruments through Tiers 0-4
+├── run_full_sweep.py           # all 5 strategies x 16 instruments through Tiers 0-4, plus correlation/weighting checks
+├── run_out_of_time_validation.py# frozen-candidate replay of the 17 persisted survivors on out-of-training windows
+├── visualize_period_comparison.py# per-period + full-history charts (PNG + interactive HTML)
 ├── data/
 │   ├── store.py                    # FxStore - candle storage, SQLite or Postgres
 │   └── run_store.py                # RunStore - persists validated backtest results
@@ -45,11 +48,17 @@ fx_trader/
 │   ├── walk_forward.py             # rolling out-of-sample validation
 │   ├── sensitivity.py              # parameter-grid plateau-vs-spike analysis
 │   ├── bootstrap.py                # resample/shuffle Monte Carlo
+│   ├── periods.py                  # period definitions (calendar year, fixed-month), shared by OOT validation and visualisation
+│   ├── period_comparison.py        # one strategy run per Period -> comparable metrics (no rendering)
+│   ├── strategy_clustering.py      # cross-strategy correlation: cluster and pairwise-discount mechanisms
+│   ├── base_metrics.py             # candidate scoring-weight blends (cost-adjusted, effect size)
 │   └── validation_orchestrator.py  # Tier 0-4 gate, wires the above together
 ├── tests/                          # one test module per backtest/data/broker component
-├── utilities/                      # apply_patch.py - session-handoff tool, see utilities/README.md
-└── run_*.py                        # single-instrument synthetic-data demos
+├── utilities/                      # apply_patch.py + apply_patch.command (double-click launcher) - session-handoff tool, see utilities/README.md
+└── run_*.py                        # synthetic-data demos (the real-sandbox run_*.py scripts are listed above)
 ```
+
+Local-only, gitignored (not in the tree above): `data/*.db`, `kraken_csv/`, `charts/*.png|html`, `.env`. See `.gitignore`.
 
 ## File versioning
 
@@ -70,6 +79,9 @@ python -m tests.test_engine            # ... and the rest of tests/*.py
 
 # Real sandbox data (dynamically named via sandbox_config.py - see CONTEXT_HANDOFF.md)
 python run_validation_hierarchy_real_data.py
+python run_full_sweep.py               # all strategies x all instruments, Tier 0-4 + correlation checks
+python run_out_of_time_validation.py   # frozen-survivor replay on out-of-training windows
+python visualize_period_comparison.py  # period-comparison charts into charts/
 ```
 
 ## Cloud database
@@ -136,7 +148,7 @@ Section 3 for what's actually been run vs. just written-to-spec.
   own docstring before assuming a short `period` behaves like a fixed
   threshold would.
 
-All three share the same `Strategy` interface, so the same backtest engine,
+All five share the same `Strategy` interface, so the same backtest engine,
 metrics, and validation hierarchy apply unchanged - see
 `VALIDATION_HIERARCHY.md`.
 

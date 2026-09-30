@@ -1,5 +1,5 @@
 <!-- root_readme (repo root: ~/FXCCXT/README.md) -->
-<!-- version: 260929 -->
+<!-- version: 260930 -->
 # FXCCXT
 
 Backtestable, cost-aware FX and crypto trading analysis pipeline: historical
@@ -16,47 +16,34 @@ This repo is the source of truth for code between Claude.ai chat sessions.
 **Claude.ai's GitHub integration is pull-only** - no automatic push, on any
 plan.
 
-Every session: new chat pulls the repo into context -> Claude edits in its
-own sandbox -> you download the changed files -> you push to GitHub -> you
-refresh the Project's Context panel so the next chat sees it. Never push a
-stale bulk copy without confirming the chat's context is current first -
-it can silently overwrite work committed by a more recent chat.
+Every session: new chat pulls the repo into context -> Claude prepares a
+`patch_YYMMDD.json` in its own sandbox -> you apply it with
+`fx_trader/utilities/apply_patch.command` (tests run, then a commit is made)
+-> you `git push` -> you refresh the Project's Context panel so the next chat
+sees it. Never push a stale bulk copy without confirming the chat's context
+is current first - it can silently overwrite work committed by a more recent
+chat.
 
 ### Session handoff format (standard, every session)
 
-At the end of any session that changed files:
+At the end of any session that changed files, Claude delivers:
 
-1. A **list of every changed/created file, by full repo path** (e.g.
-   `fx_trader/backtest/engine.py`), including anything given as a patch
-   instruction rather than reproduced in full (see point 3).
-2. A **single zip that preserves the repo's folder structure** -
-   `fx_trader/...` paths inside the zip, never a flat dump - containing
-   every file that was fully reproduced this session.
-3. Where a change is a small, precise edit to a large file, Claude may
-   give an exact old-text -> new-text patch instruction in the reply
-   instead of reproducing the whole file - token cost scales with file
-   size, and reproducing an 800-line file to change two lines is
-   wasteful. Full reproduction (in the zip) is the default for new files
-   or files with substantial changes; for a small patch to an otherwise-
-   untouched large file, Claude states the trade-off and asks whether the
-   full file should go in the zip anyway, rather than deciding
-   unilaterally.
-4. For that patch instruction, Claude gives a runnable Python patch
-   script (old/new text pairs, applied with an exact-match-count check
-   per file, skipping and reporting rather than guessing on a mismatch)
-   instead of raw `sed` - portable across machines without worrying about
-   BSD vs. GNU `sed` differences, and it fails loudly instead of silently
-   mismatching on whitespace.
-
-**When to package the zip**: zipping itself costs almost nothing - the
-token cost is in authoring a file's full content, which happens once
-whether the zip is built immediately or saved for the end. So: author
-each file once (a new/heavily-changed file via full reproduction, any
-further edit to an already-created file within the same session as a
-small diff, not a full re-output), and only run the zip/present step
-once, at the actual end of the session or whenever the person explicitly
-wants a download - not after every file, and not speculatively for a
-file that's still likely to change again this session.
+1. A **list of every changed/created/deleted file, by full repo path**.
+2. A single **`patch_YYMMDD.json`** (session date) - no zips. Operations:
+   `create` (full file, overwrites), `patch` (exact old-text -> new-text, must
+   match the current file EXACTLY ONCE or it is skipped and reported) and
+   `delete`. `create` is the default for new files or substantial rewrites;
+   `patch` for small edits to large files, since token cost scales with file
+   size. Keep `old` strings short and single-line where possible; if one is
+   skipped, shorten the anchor rather than lengthening it.
+3. **How to apply**: double-click `fx_trader/utilities/apply_patch.command` in
+   Finder and choose the JSON (preview first with `--dry-run` from a terminal).
+   It checks git state, applies the operations, runs every `tests/test_*.py`,
+   and commits; `git push` stays manual unless `--auto-push` is passed. Share
+   the terminal output back with Claude. Full details:
+   `fx_trader/utilities/README.md`.
+4. **What to push and sync**: push only changed files, then refresh the
+   Context panel.
 
 ### Turn-pacing convention: FNORD (standard, every session, by default)
 
@@ -76,7 +63,7 @@ needs to be requested each time.
 
 ### File versioning (standard, from 260929)
 
-Every file created or edited carries a `YYMMDD` version stamp; no stamp means legacy, stamped when next touched. Importable `.py`, `run_*.py`, tests: stable name + first-line `# version: YYMMDD`. Cross-referenced docs and READMEs: stable name + `<!-- version: YYMMDD -->` first line (READMEs: directly under the marker line). Generated or transient files (patch payloads, logs, charts, DB snapshots): dated filename, e.g. `patch_260929.json`. Full rule and rationale: `fx_trader/CONTEXT_HANDOFF.md` Working Conventions.
+Every file created or edited carries a `YYMMDD` version stamp; no stamp means legacy, stamped when next touched. Importable `.py`, `run_*.py`, tests: stable name + `# version: YYMMDD` on line 1 (line 2 under a shebang). Cross-referenced docs and READMEs: stable name + `<!-- version: YYMMDD -->` first line (READMEs: directly under the marker line). Generated or transient files (patch payloads, logs, charts, DB snapshots): dated filename, e.g. `patch_260930.json`. Full rule, rationale and the placement details settled 260930: `fx_trader/CONTEXT_HANDOFF.md` Working Conventions.
 
 ### Next-chat handoff (standard, every session)
 
@@ -98,4 +85,4 @@ page, immediately visible in raw text, `cat`, or any editor:
 
 Any new `README.md` added anywhere in this repo gets the same treatment -
 named after its own path, underscores instead of slashes, `_readme`
-suffix.
+suffix. The version line goes directly under the marker line.

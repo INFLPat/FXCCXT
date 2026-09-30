@@ -1,3 +1,4 @@
+# version: 260930
 """
 visualize_period_comparison.py
 
@@ -19,12 +20,10 @@ phases" framing:
   boundaries - the "did this hold up steadily the whole time" view,
   reusing backtest/rolling.py rather than reimplementing it.
 
-Currently only ONE Period exists (2025 H2, the only data loaded so far) -
-the short-phase chart will show a single bar group until multi-year data
-is loaded (ROADMAP.md Section 1 / fetch_sandbox_data.py). The mechanism
-is what's being proven here, not an interesting comparison yet - re-run
-this unchanged once data/sandbox_history.db exists for a real multi-year
-view.
+The sandbox spans multiple calendar years (window set in sandbox_config.py),
+so the short-phase chart shows one bar group per calendar year (a partial
+first/last year is still included). Swap the period generator in
+backtest/periods.py to compare quarters or custom periods instead.
 
 Run: python visualize_period_comparison.py
 """
@@ -212,8 +211,8 @@ def main():
     periods = calendar_year_periods(store, INSTRUMENT, GRANULARITY)
     print(f"{len(periods)} calendar-year period(s) found for {INSTRUMENT}: {[p.label for p in periods]}")
     if len(periods) < 2:
-        print("Only one period available (single-window sandbox) - the short-phase chart will show one bar group.")
-        print("Re-run once data/sandbox_history.db (multi-year) exists for a real comparison.")
+        print("Only one calendar-year period found for this instrument - the short-phase chart will show one bar group.")
+        print("Check sandbox coverage for this instrument (sandbox_config.py, fetch_sandbox_data.py, ingest_kraken_gbp_csv.py).")
 
     comparison = compare_periods(
         periods, store, INSTRUMENT, GRANULARITY, STRATEGY_FACTORY, PARAMS, STRATEGY_NAME,

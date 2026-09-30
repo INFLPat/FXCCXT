@@ -1,3 +1,4 @@
+# version: 260930
 """
 backtest/bootstrap.py
 
@@ -183,7 +184,6 @@ def run_bootstrap(
 ) -> BootstrapResult:
     if method not in ("resample", "shuffle"):
         raise ValueError(f"method must be 'resample' or 'shuffle', got '{method}'")
-    assert n_iterations <= MAX_ITERATIONS, f"n_iterations={n_iterations} exceeds MAX_ITERATIONS={MAX_ITERATIONS}"
     assert n_iterations <= MAX_ITERATIONS, f"n_iterations={n_iterations} exceeds MAX_ITERATIONS={MAX_ITERATIONS}"
 
     closed_trades = [t for t in trades if not t.is_open]
