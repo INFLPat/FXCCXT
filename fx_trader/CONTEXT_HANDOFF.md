@@ -68,7 +68,7 @@ constraint throughout.
 
 ## 3. VERIFIED VS. NOT
 
-**User's environment (stated chat 12; do not re-ask):** Python 3.14.7. Claude's build sandbox runs Python 3.12.3, so anything version-sensitive is unverified on 3.14. Not known: whether `psycopg2-binary`, `ccxt`, `requests` and `matplotlib` have working 3.14 builds (run_monitor.py uses stdlib only).
+**User's environment (stated chat 12; do not re-ask):** Python 3.14.7 on macOS, `python3` only - give every command to the user as `python3`, never `python` (chat 13). Verified chat 13: the full test suite and a full 80-run sweep ran on 3.14.7 (stdlib/sqlite paths; psycopg2/ccxt/requests/matplotlib not exercised). Claude's build sandbox runs Python 3.12.3, so anything version-sensitive is unverified on 3.14. Not known: whether `psycopg2-binary`, `ccxt`, `requests` and `matplotlib` have working 3.14 builds (run_monitor.py uses stdlib only).
 
 Build sandbox has no network access - anything needing OANDA/an exchange/a
 real cloud DB is written carefully but unrun by Claude directly; the
@@ -85,7 +85,7 @@ person re-runs and reports back.
 | `OandaBroker.fetch_candles` | Run against a real practice account - 2 bugs found and fixed (timestamp needs literal `Z`, not `+00:00`; `count` must not be sent alongside both `from`+`to`). |
 | `CcxtBroker.fetch_candles` vs Binance | Run - exact candle counts, real prices confirmed. |
 | `CcxtBroker.fetch_candles` vs Kraken (live API) | Confirmed real limitation: only serves a rolling recent window. Worked around via `ingest_kraken_gbp_csv.py`'s bulk CSV path. |
-| `run_monitor.py` | Unit-tested in Claude's Linux sandbox (success/failure/interrupt/killed-run/write-failure/recovery paths). NOT yet run on the user's machine or against the real sweep; macOS peak-memory units and real disk-full not verified. |
+| `run_monitor.py` | Unit-tested in Claude's Linux sandbox (success/failure/interrupt/killed-run/write-failure/recovery paths). Run on the user's machine in two real full sweeps (chat 13, both ok; start/notes/items/end records and meta as expected); macOS peak-memory units and real disk-full not verified. |
 | `OandaBroker.get_quote` / `place_market_order` | **Never run - elevated suspicion.** |
 | `CcxtBroker` against a real (non-fake) exchange | Never run. |
 
@@ -142,7 +142,7 @@ Only mean-reversion strategies (RSI, RSI+MACD confluence) survived, only
 on JPY crosses and Litecoin pairs. `SmaCrossoverStrategy`: 0/16.
 `MacdStrategy` / `BollingerBandsStrategy`: 0/16 each - both repeatedly
 reached Tier 3, never cleared bootstrap. Persisted survivors:
-`data/full_sweep_runs.db` (not yet committed - see Section 6).
+`data/full_sweep_runs.db` was LOST (gitignored, never committed, not in git history). **Reproduced chat 13 (261001):** same 7 pairs / 17 survivors, same best CI-90 bounds, and 17 param sets identical to `SURVIVORS` in `run_out_of_time_validation.py`, from three runs: the 260922 script unmonitored on the old 2025 H2 sandbox; the current script monitored on the old sandbox; the current script on the 22Q1-26Q1 sandbox sliced to 2025-07-01..2025-12-31. The 2025 H2 slice of the 22Q1-26Q1 sandbox is row-for-row identical to the old sandbox (60,430 rows, 0 price/volume differences). Reproduction DBs (local, gitignored - back up): `data/sweep_runs_250701to251231_chat13_261001_{A-orig,A-mon,B}.db`. Re-run: `python3 run_full_sweep.py --start 2025-07-01 --end 2025-12-31 --chat <N>`. Original per-survivor CIs are not comparable (original DB lost); per-pair bests match the table above. Run time 142s on the user's machine (original 186.6s, machine unknown) - informational, not a gate.
 
 **Checks against `CONFIDENCE_SIZING_DESIGN.md` Section 4.2:**
 1. Real strategy correlation matches the synthetic-data numbers closely
@@ -251,7 +251,7 @@ size, no bare `except: pass`.
 - Timezone policy (chat 14 audit): user is London-based and wants everything aligned to London time. Run-monitor stores UTC + Europe/London. Stored market-data timestamps are UTC (OANDA `Z`, Binance/ccxt UTC, Kraken epoch, `sandbox_config.py`) and `periods.py` year/quarter boundaries are UTC. SETTLED 260930 (chat 12): keep storage UTC, convert for display only (London time); chat 14 audits conformance. Unknown: OANDA candle alignment timezone (`fetch_candles` sets none).
 - `run_full_sweep.py` needs a permanent home / resolution against
   `run_validation_hierarchy_real_data.py` (does it replace or extend it -
-  your call, not made here). `data/full_sweep_runs.db` not yet committed.
+  your call, not made here). The original `data/full_sweep_runs.db` was lost (Section 4d); reproduction DBs are local/gitignored - back up `fx_trader/data/*.db` manually, git cannot recover them.
 - Section 4d point 3's weighting-formula fix needs to land in the real
   scoring engine, not just the sanity-check script.
 - Real trade frequency per Tier 4 survivor (Section 4d point 4) - needed

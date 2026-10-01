@@ -1,4 +1,4 @@
-<!-- version: 260930 -->
+<!-- version: 261001 -->
 # Roadmap
 
 Read after `CONTEXT_HANDOFF.md` and `CONFIDENCE_SIZING_DESIGN.md`. Rewritten 260929 (chat 10); housekeeping edits 260930 (chat 11). Contents: 0 baseline, 1 MVP, 2 sandbox and validation data, 3 phases, 4 chat plan, 5 parallel/post-MVP, 6 de-bloat, 7 risk register, 8 extras.
@@ -46,9 +46,9 @@ Read after `CONTEXT_HANDOFF.md` and `CONFIDENCE_SIZING_DESIGN.md`. Rewritten 260
 
 **Unseen-data caveat:** out-of-time replay, re-discovery and the base-metric test all consume the existing data. The only genuinely unseen data will be forward paper/live data. Chat 17 decides a holdout policy inside the sandbox (e.g. reserve 2026 Q1 untouched until the final pre-live check). Not decided yet.
 
-**Still open:** (a) compute-budget dry run on the ~4.25-year window (original sweep 186.6s on 6 months; extrapolation of ~25+ min is a guess, run-monitor data will replace it); (b) cross-rate arithmetic validation (GBP_USD x USD_JPY vs GBP_JPY, EUR_USD vs EUR_GBP x GBP_USD) and cross-instrument timestamp alignment - never performed; do before any cross-instrument result is trusted.
+**Still open:** (a) compute-budget dry run on the ~4.25-year window (original sweep 186.6s on 6 months, machine unknown; chat 13 re-runs 142.2s on the user's machine, 6 months, three runs; extrapolation of ~25+ min is a guess, run-monitor data will replace it); (b) cross-rate arithmetic validation (GBP_USD x USD_JPY vs GBP_JPY, EUR_USD vs EUR_GBP x GBP_USD) and cross-instrument timestamp alignment - never performed; do before any cross-instrument result is trusted.
 
-**Reproducing the 7 survivors:** the current `run_full_sweep.py` targets the 22Q1-26Q1 DB with no date restriction, so it will NOT reproduce 2025 H2 numbers. Reproduction needs either the original 2025 H2 sandbox database plus the old script version (held by the user), or a re-windowed sweep (2025-07-01 to 2025-12-31). Survivor table: `CONTEXT_HANDOFF.md` Section 4d.
+**Reproducing the 7 survivors: DONE chat 13 (261001), result in `CONTEXT_HANDOFF.md` Section 4d; text below kept as background:** the current `run_full_sweep.py` targets the 22Q1-26Q1 DB with no date restriction, so it will NOT reproduce 2025 H2 numbers. Reproduction needs either the original 2025 H2 sandbox database plus the old script version (held by the user), or a re-windowed sweep (2025-07-01 to 2025-12-31). Survivor table: `CONTEXT_HANDOFF.md` Section 4d.
 
 **Out-of-time methodology (two parts, both built):** (1) frozen-candidate replay (`run_out_of_time_validation.py`): the 17 persisted survivors, unchanged params, every window outside 2025 H2, same gate values, no loosening. (2) independent re-discovery (`run_full_sweep.py` on the wider window, restricted to non-2025-H2 windows first), compared by hand with (1). Open questions: does a strong new discovery replace the 17 as the reference set; `RunStore` output naming (`full_sweep_runs.db` vs `validated_runs.db`); whether `MAX_GRID_COMBINATIONS` (200) should rise.
 
@@ -97,7 +97,7 @@ Rules: one topic per chat, finished inside one 24h window. Always attach `CONTEX
 |---|---|---|---|---|
 | 11 | Housekeeping and versioning rollout: dupes (apply_delete, sensitivity/bootstrap assertions, README lines), stale docstring refs, README layout, five-vs-three strategies wording. Deletions/doc fixes only in rework-exposed modules | S | utilities/apply_patch.py, utilities/README.md, backtest/sensitivity.py, backtest/bootstrap.py, README.md, fx_trader/README.md, run_validation_hierarchy_real_data.py, run_out_of_time_validation.py | - |
 | 12 | Run-monitor utility (duration/metadata log) | S | run_full_sweep.py | 11 |
-| 13 | Reproduce 7 survivors on 2025 H2 (re-windowed sweep: add window-start/end `note()` calls via run_monitor) | M | old and current run_full_sweep.py, instrument_config.py, sandbox_config.py; user pastes terminal output | 12 |
+| 13 | DONE 261001. Reproduce 7 survivors on 2025 H2 (re-windowed sweep: add window-start/end `note()` calls via run_monitor) | M | old and current run_full_sweep.py, instrument_config.py, sandbox_config.py; user pastes terminal output | 12 |
 | 14 | Cross-rate arithmetic, timestamp-alignment and TIMEZONE audit script (London-vs-UTC policy, OANDA candle alignment, `periods.py` boundaries); adopts run_monitor from creation; `fetch_sandbox_data.py` adopts it if touched | M | data/store.py, sandbox_config.py, instrument_config.py, fetch_sandbox_data.py | 12 |
 | 15 | Full-window compute dry run | S | run_full_sweep.py; user pastes `python run_monitor.py summary <log>` output or attaches the day's `logs/run_log_*.jsonl` | 13 |
 | 16 | Out-of-time frozen-candidate replay: run and interpret | M | run_out_of_time_validation.py, backtest/periods.py, backtest/validation_orchestrator.py | 13, 14, 15 |
@@ -121,7 +121,7 @@ Rules: one topic per chat, finished inside one 24h window. Always attach `CONTEX
 
 **Run-monitor adoption (from chat 12; API in `run_monitor.py`'s docstring). Rule: every new long-running script adopts it from creation. Status of everything else:**
 - ADOPTED: `run_full_sweep.py` (chat 12).
-- Chat 13: re-windowed `run_full_sweep.py` - add window start/end notes. The old 2025 H2 script copy is unmonitored by definition.
+- Chat 13: DONE (CLI args, window/coverage notes) - re-windowed `run_full_sweep.py`. The old 2025 H2 script copy is unmonitored by definition.
 - Chat 14: new audit script adopts from creation; `fetch_sandbox_data.py` adopts if touched, else at its next re-run (sandbox is final, so unlikely).
 - Chat 16: `run_out_of_time_validation.py` adopts when run (one `item` per candidate x window; `count` windows/candles).
 - Chats 21-25 (cartesian): every new script and sweep adopts from creation; one `item` per pair/signal/grid combination; `count` candles and legs. The 100,000 item-line ceiling may bite; the end-record summary stays exact.

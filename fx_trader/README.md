@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 260930 -->
+<!-- version: 261001 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -80,7 +80,7 @@ python -m tests.test_engine            # ... and the rest of tests/*.py
 
 # Real sandbox data (dynamically named via sandbox_config.py - see CONTEXT_HANDOFF.md)
 python run_validation_hierarchy_real_data.py
-python run_full_sweep.py               # all strategies x all instruments, Tier 0-4 + correlation checks
+python3 run_full_sweep.py --start YYYY-MM-DD --end YYYY-MM-DD --chat N   # all strategies x all instruments over a window, Tier 0-4 + correlation checks
 python run_out_of_time_validation.py   # frozen-survivor replay on out-of-training windows
 python visualize_period_comparison.py  # period-comparison charts into charts/
 ```
