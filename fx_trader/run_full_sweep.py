@@ -1,4 +1,4 @@
-# version: 260930
+# version: 261001
 """
 run_full_sweep.py
 
@@ -10,9 +10,29 @@ real sandbox instruments through the Tier 0-4 hierarchy, plus the Section
     MACD ~uncorrelated)
   - a sanity check of the Section 4 strawman tier_multiplier weighting
     formula against real per-(strategy,instrument) results
+
+CLI ARGS (settled 261001, chat 13 - the repo standard for run scripts; the
+window and chat number are recorded in the run_monitor start record, and no
+file edit per run keeps git_dirty false):
+
+    python run_full_sweep.py --start 2025-07-01 --end 2025-12-31 --chat 13
+    optional: --tag B   --sandbox-db data/sandbox_2025h2.db
+
+--start/--end: inclusive UTC calendar dates; candles are sliced with
+    FxStore.get_candles(start=, end=) using bounds in the STORED timestamp
+    format (...000000000Z), not isoformat() (+00:00 sorts differently).
+--sandbox-db: defaults to the sandbox named by sandbox_config.py.
+--tag: optional suffix on the runs DB name (e.g. to tell repeat runs apart).
+Runs DB (new file per run, refuses to reuse an existing one):
+    data/sweep_runs_<start>to<end>_chat<N>_<run date, London>[_<tag>].db
 """
 
+import argparse
+import re
+import sys
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 from backtest.engine import BacktestEngine
 from backtest.portfolio import compute_portfolio_metrics
@@ -27,16 +47,13 @@ from backtest.validation_orchestrator import (
 from data.run_store import RunStore
 from data.store import FxStore
 from instrument_config import INSTRUMENTS, STARTING_BALANCE, TARGET_NOTIONAL, WINDOW_SIZES
-from run_monitor import count, item, monitored_run, note
+from run_monitor import LONDON, count, item, monitored_run, note
 from strategy.bollinger_strategy import BollingerBandsStrategy
 from strategy.macd_strategy import MacdStrategy
 from strategy.rsi_macd_confluence import RsiMacdConfluenceStrategy
 from strategy.rsi_strategy import RsiStrategy
 from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
 from strategy.sma_crossover import SmaCrossoverStrategy
-
-SANDBOX_DB = f"sqlite:///{sandbox_db_path(GLOBAL_START, discover_sandbox_end())}"
-RUNS_DB = "sqlite:///data/full_sweep_runs.db"
 
 STRATEGIES = [
     ("SmaCrossoverStrategy", SmaCrossoverStrategy, {
@@ -58,6 +75,41 @@ STRATEGIES = [
 
 TIER_MULTIPLIER = {0: 0.0, 1: 0.25, 2: 0.5, 3: 0.75, 4: 1.0}
 ROLLING_WINDOW = 500
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    assert isinstance(argv, list), "argv must be a list"
+    assert all(isinstance(a, str) for a in argv), "argv entries must be strings"
+    parser = argparse.ArgumentParser(description="Full Tier 0-4 sweep over a date window.")
+    parser.add_argument("--start", required=True, help="YYYY-MM-DD, inclusive (UTC)")
+    parser.add_argument("--end", required=True, help="YYYY-MM-DD, inclusive (UTC)")
+    parser.add_argument("--chat", type=int, required=True, help="chat number, used in the runs DB name")
+    parser.add_argument("--sandbox-db", default=None, help="sqlite path; default = sandbox_config.py's sandbox")
+    parser.add_argument("--tag", default="", help="optional runs-DB name suffix (letters, digits, hyphen)")
+    return parser.parse_args(argv)
+
+
+def build_config(args: argparse.Namespace, run_date: str) -> dict:
+    """Validates args and derives bounds/paths. run_date is YYMMDD (London)."""
+    assert re.fullmatch(r"\d{6}", run_date), f"run_date must be YYMMDD, got {run_date!r}"
+    assert args.chat > 0, "--chat must be positive"
+    assert re.fullmatch(r"[A-Za-z0-9-]*", args.tag), "--tag may only contain letters, digits, hyphen"
+    start = datetime.strptime(args.start, "%Y-%m-%d")
+    end = datetime.strptime(args.end, "%Y-%m-%d")
+    assert start <= end, f"--start {args.start} is after --end {args.end}"
+
+    sandbox_path = args.sandbox_db or sandbox_db_path(GLOBAL_START, discover_sandbox_end())
+    assert Path(sandbox_path).exists(), f"sandbox DB not found: {sandbox_path} (FxStore would silently create an empty one)"
+
+    suffix = f"_{args.tag}" if args.tag else ""
+    runs_path = f"data/sweep_runs_{start:%y%m%d}to{end:%y%m%d}_chat{args.chat}_{run_date}{suffix}.db"
+    assert not Path(runs_path).exists(), f"runs DB already exists: {runs_path} - pick a different --tag"
+    return {
+        "start_ts": start.strftime("%Y-%m-%dT00:00:00.000000000Z"),
+        "end_ts": end.strftime("%Y-%m-%dT23:59:59.000000000Z"),
+        "sandbox_path": sandbox_path, "sandbox_url": f"sqlite:///{sandbox_path}",
+        "runs_path": runs_path, "runs_url": f"sqlite:///{runs_path}",
+    }
 
 
 def run_one(instrument, granularity, cost_model, periods_per_year, candles, strat_name, strat_factory, grid, run_store):
@@ -154,17 +206,19 @@ def correlation_for_instrument(candles, cost_model, periods_per_year):
     return compute_portfolio_metrics(aligned, periods_per_year=periods_per_year)
 
 
-@monitored_run("run_full_sweep")
-def main():
-    store = FxStore(database_url=SANDBOX_DB)
-    note("sandbox_db", SANDBOX_DB)
-    note("runs_db", RUNS_DB)
-    note("sandbox_start", GLOBAL_START.isoformat())
-    note("sandbox_end", discover_sandbox_end().isoformat())
+def _sweep(cfg: dict) -> None:
+    assert cfg["start_ts"] < cfg["end_ts"], "window bounds out of order"
+    assert cfg["runs_path"] != cfg["sandbox_path"], "runs DB must differ from the sandbox DB"
+    store = FxStore(database_url=cfg["sandbox_url"])
+    note("sandbox_db", cfg["sandbox_url"])
+    note("runs_db", cfg["runs_url"])
+    note("window_start_ts", cfg["start_ts"])
+    note("window_end_ts", cfg["end_ts"])
     note("n_strategies", len(STRATEGIES))
     note("n_instruments", len(INSTRUMENTS))
-    run_store = RunStore(database_url=RUNS_DB)
+    run_store = RunStore(database_url=cfg["runs_url"])
 
+    print(f"Window {cfg['start_ts']} .. {cfg['end_ts']}\nSandbox {cfg['sandbox_path']}\nRuns DB {cfg['runs_path']}")
     print(f"{'strategy':<26} {'instrument':<10} {'grid':>5} {'T1':>4} {'T2':>4} {'T3':>4} {'T4':>4} {'sec':>7}")
     print("-" * 80)
 
@@ -173,7 +227,10 @@ def main():
     total_start = time.time()
 
     for instrument, granularity, cost_model, periods_per_year in INSTRUMENTS:
-        candles = store.get_candles(instrument, granularity)
+        candles = store.get_candles(instrument, granularity, start=cfg["start_ts"], end=cfg["end_ts"])
+        coverage = f"{len(candles)} candles {candles[0].timestamp} .. {candles[-1].timestamp}" if candles else "0 candles"
+        note(f"coverage_{instrument}", coverage)
+        print(f"  coverage {instrument}: {coverage}")
         if len(candles) < sum(WINDOW_SIZES):
             print(f"{instrument} SKIPPED - only {len(candles)} candles")
             continue
@@ -236,6 +293,17 @@ def main():
     for a in names:
         row = f"{short[a]:<9}" + " ".join(f"{sum(avg_matrix[a][b]) / len(avg_matrix[a][b]):>7.2f}" for b in names)
         print(row)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    run_date = datetime.now(LONDON or timezone.utc).strftime("%y%m%d")
+    cfg = build_config(args, run_date)
+    with monitored_run(
+        "run_full_sweep", chat=args.chat, start=args.start, end=args.end, tag=args.tag,
+        sandbox_db=cfg["sandbox_path"], runs_db=cfg["runs_path"],
+    ):
+        _sweep(cfg)
 
 
 if __name__ == "__main__":
