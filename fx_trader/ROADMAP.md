@@ -91,15 +91,15 @@ Read after `CONTEXT_HANDOFF.md` and `CONFIDENCE_SIZING_DESIGN.md`. Rewritten 260
 
 ## 4. Chat plan
 
-Rules: one topic per chat, finished inside one 24h window. Always attach `CONTEXT_HANDOFF.md`; attach `ROADMAP.md` only if the chat changes the plan. A long attachment list means the scope is too big: split it (chat 19 is the known exception: a heavy architecture topic). All chats run on Sonnet (free tier; context limits rule out Haiku; Opus/Fable unavailable), so there is no per-chat model selection. Sizes (provisional, revisit as progress is monitored): S under half a 5-hour window, M about one, L one to two.
+Rules: one topic per chat, finished inside one 24h window. The Context panel repo sync already supplies every committed repo file, so the Attach column names repo files to LOOK AT (in context), not to upload; UPLOAD only what is not in the repo (gitignored DBs, logs, historical copies, pasted terminal output) and mark it (upload). A long attachment list means the scope is too big: split it (chat 19 is the known exception: a heavy architecture topic). All chats run on Sonnet (free tier; context limits rule out Haiku; Opus/Fable unavailable), so there is no per-chat model selection. Sizes (provisional, revisit as progress is monitored): S under half a 5-hour window, M about one, L one to two.
 
 | # | Topic | Size | Attach (besides CONTEXT_HANDOFF.md) | After |
 |---|---|---|---|---|
 | 11 | Housekeeping and versioning rollout: dupes (apply_delete, sensitivity/bootstrap assertions, README lines), stale docstring refs, README layout, five-vs-three strategies wording. Deletions/doc fixes only in rework-exposed modules | S | utilities/apply_patch.py, utilities/README.md, backtest/sensitivity.py, backtest/bootstrap.py, README.md, fx_trader/README.md, run_validation_hierarchy_real_data.py, run_out_of_time_validation.py | - |
 | 12 | Run-monitor utility (duration/metadata log) | S | run_full_sweep.py | 11 |
 | 13 | DONE 261001. Reproduce 7 survivors on 2025 H2 (re-windowed sweep: add window-start/end `note()` calls via run_monitor) | M | old and current run_full_sweep.py, instrument_config.py, sandbox_config.py; user pastes terminal output | 12 |
-| 14 | Cross-rate arithmetic, timestamp-alignment and TIMEZONE audit script (London-vs-UTC policy, OANDA candle alignment, `periods.py` boundaries); adopts run_monitor from creation; `fetch_sandbox_data.py` adopts it if touched | M | data/store.py, sandbox_config.py, instrument_config.py, fetch_sandbox_data.py | 12 |
-| 15 | Full-window compute dry run | S | run_full_sweep.py; user pastes `python run_monitor.py summary <log>` output or attaches the day's `logs/run_log_*.jsonl` | 13 |
+| 14 | Cross-rate arithmetic, timestamp-alignment and TIMEZONE audit script (London-vs-UTC policy, OANDA candle alignment, `periods.py` boundaries); adopts run_monitor from creation; `fetch_sandbox_data.py` adopts it if touched | M | data/store.py, sandbox_config.py, instrument_config.py, fetch_sandbox_data.py (all in context); UPLOAD sandbox_22Q1to26Q1.db | 12 |
+| 15 | Full-window compute dry run | S | run_full_sweep.py; user pastes `python3 run_monitor.py summary <log>` output or attaches the day's `logs/run_log_*.jsonl` | 13 |
 | 16 | Out-of-time frozen-candidate replay: run and interpret | M | run_out_of_time_validation.py, backtest/periods.py, backtest/validation_orchestrator.py | 13, 14, 15 |
 | 17 | Holdout policy inside the sandbox (matters most for cartesian) | S | none | 16 |
 | 18 | Cartesian definition (relative strength, spread mean-reversion, others); no code | L | CONFIDENCE_SIZING_DESIGN.md, backtest/portfolio.py | 14, 17 |

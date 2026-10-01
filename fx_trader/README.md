@@ -69,20 +69,20 @@ Files carry a `YYMMDD` version stamp (first-line `# version:` in code, `<!-- ver
 
 ```bash
 pip install -r requirements.txt
-python run_strategy_demo.py            # synthetic FX; set STRATEGY_NAME (SMA / RSI / Bollinger)
-python run_crypto_backtest_demo.py     # synthetic crypto, percentage-based costs
-python run_macd_demo.py                # synthetic FX, MACD crossover - with vs without RSI filter
-python run_confluence_demo.py          # synthetic FX, RSI+MACD independent confluence across window sizes
-python run_walk_forward_demo.py
-python run_sensitivity_demo.py
-python run_bootstrap_demo.py
-python -m tests.test_engine            # ... and the rest of tests/*.py
+python3 run_strategy_demo.py            # synthetic FX; set STRATEGY_NAME (SMA / RSI / Bollinger)
+python3 run_crypto_backtest_demo.py     # synthetic crypto, percentage-based costs
+python3 run_macd_demo.py                # synthetic FX, MACD crossover - with vs without RSI filter
+python3 run_confluence_demo.py          # synthetic FX, RSI+MACD independent confluence across window sizes
+python3 run_walk_forward_demo.py
+python3 run_sensitivity_demo.py
+python3 run_bootstrap_demo.py
+python3 -m tests.test_engine            # ... and the rest of tests/*.py
 
 # Real sandbox data (dynamically named via sandbox_config.py - see CONTEXT_HANDOFF.md)
-python run_validation_hierarchy_real_data.py
+python3 run_validation_hierarchy_real_data.py
 python3 run_full_sweep.py --start YYYY-MM-DD --end YYYY-MM-DD --chat N   # all strategies x all instruments over a window, Tier 0-4 + correlation checks
-python run_out_of_time_validation.py   # frozen-survivor replay on out-of-training windows
-python visualize_period_comparison.py  # period-comparison charts into charts/
+python3 run_out_of_time_validation.py   # frozen-survivor replay on out-of-training windows
+python3 visualize_period_comparison.py  # period-comparison charts into charts/
 ```
 
 ## Cloud database
@@ -91,7 +91,7 @@ python visualize_period_comparison.py  # period-comparison charts into charts/
 `RUNS_DATABASE_URL`, falling back to local SQLite if unset. Snowflake
 Postgres works with zero code changes - it's a standard libpq connection,
 just append `?sslmode=require` (a missing `sslmode` triggers a startup
-warning). Verify with `python -m tests.test_store` against your real
+warning). Verify with `python3 -m tests.test_store` against your real
 instance before trusting the Postgres path - see `CONTEXT_HANDOFF.md`
 Section 3 for what's actually been run vs. just written-to-spec.
 
