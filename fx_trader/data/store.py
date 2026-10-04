@@ -1,3 +1,4 @@
+# version: 261003
 """
 data/store.py
 
@@ -39,6 +40,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
+
+from time_policy import normalize_bound
 
 try:
     import psycopg2
@@ -199,6 +202,8 @@ class FxStore:
         """Fetch candles ordered by time. start/end are ISO8601 strings, inclusive."""
         assert instrument, "instrument must be non-empty"
         assert granularity, "granularity must be non-empty"
+        start = normalize_bound(start) if start else None  # stored-format text (time_policy.py): isoformat() bounds silently dropped the end candle
+        end = normalize_bound(end) if end else None
         ph = self._ph
         query = (
             "SELECT instrument, granularity, timestamp, "
@@ -241,6 +246,8 @@ class FxStore:
             return {}
         ph = self._ph
         placeholders = ", ".join([ph] * len(instruments))
+        start = normalize_bound(start) if start else None  # see get_candles
+        end = normalize_bound(end) if end else None
         query = (
             "SELECT instrument, granularity, timestamp, "
             "bid_open, bid_high, bid_low, bid_close, "

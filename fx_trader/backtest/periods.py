@@ -1,3 +1,4 @@
+# version: 261003
 """
 backtest/periods.py
 
@@ -22,6 +23,7 @@ the periods - the generator is the only thing that needs to change to add
 a new comparison axis, nothing downstream does.
 """
 
+import calendar
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -47,7 +49,10 @@ def _month_add(dt: datetime, months: int) -> datetime:
     month_index = dt.month - 1 + months
     year = dt.year + month_index // 12
     month = month_index % 12 + 1
-    return dt.replace(year=year, month=month)
+    day = min(dt.day, calendar.monthrange(year, month)[1])  # clamp: Dec 31 + 6 months must be Jun 30, not an error
+    assert 1 <= month <= 12 and 1 <= day <= 31, f"bad month arithmetic: {year}-{month}-{day}"
+    assert months >= 0, "_month_add only moves forward"
+    return dt.replace(year=year, month=month, day=day)
 
 
 def _end_of_period(next_period_start: datetime) -> datetime:
@@ -108,8 +113,11 @@ def fixed_month_periods(
     periods: list[Period] = []
     if earliest < exclude_start:
         periods.extend(_chunk_side(earliest, min(exclude_start, latest), window_months, "pre_"))
-    if latest > exclude_end:
-        periods.extend(_chunk_side(max(exclude_end, earliest), latest, window_months, "post_"))
+    if latest > exclude_end + timedelta(seconds=1):
+        # exclude_end is the LAST SECOND of the excluded window, so the post side starts one second later
+        # (anchoring windows at 23:59:59 on the 31st was the second half of the chat-14 periods bug)
+        post_start = max(exclude_end + timedelta(seconds=1), earliest)
+        periods.extend(_chunk_side(post_start, latest, window_months, "post_"))
     return periods
 
 

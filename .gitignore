@@ -1,4 +1,4 @@
-# version: 260930
+# version: 261003
 # Local/generated market data - never committed.
 # Real market data has redistribution restrictions and the Claude GitHub
 # integration can't usefully read binary files anyway. Re-upload the .db directly to
@@ -24,6 +24,11 @@ fx_trader/charts/*.html
 # never the cloud DB. Paste `python run_monitor.py summary <file>` output
 # (or attach the file) to a chat when its timings matter.
 fx_trader/logs/*.jsonl
+
+# Audit reports and sandbox manifests (audit_sandbox_alignment.py): generated per run,
+# local only. Keep a manifest locally and back it up with the sandbox DB.
+fx_trader/reports/*.json
+fx_trader/reports/*.txt
 
 # Credentials - never commit these, however you choose to set them locally
 .env

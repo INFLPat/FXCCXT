@@ -1,3 +1,4 @@
+# version: 261003
 """
 tests/test_periods.py
 
@@ -96,9 +97,45 @@ def test_fixed_month_periods_excludes_training_window():
     print("Training-window exclusion assertion passed.")
 
 
+def test_month_add_clamps_day_overflow():
+    """Chat-14 bug: replace(month=...) raised on day 29-31 (Dec 31 + 6 months)."""
+    from backtest.periods import _month_add
+    utc = timezone.utc
+    assert _month_add(datetime(2025, 12, 31, 23, 59, 59, tzinfo=utc), 6) == datetime(2026, 6, 30, 23, 59, 59, tzinfo=utc)
+    assert _month_add(datetime(2025, 1, 31, tzinfo=utc), 1) == datetime(2025, 2, 28, tzinfo=utc)
+    assert _month_add(datetime(2024, 1, 31, tzinfo=utc), 1) == datetime(2024, 2, 29, tzinfo=utc), "leap year"
+    assert _month_add(datetime(2025, 3, 31, tzinfo=utc), 12) == datetime(2026, 3, 31, tzinfo=utc)
+    for day in (28, 29, 30, 31):
+        for months in range(0, 25):
+            probe = datetime(2023, 12, day, tzinfo=utc)
+            result = _month_add(probe, months)
+            assert result.day <= day, (probe, months, result)
+    print("_month_add day-clamp assertions passed (all days 28-31 x 0-24 months).")
+
+
+def test_post_training_side_is_generated_and_anchored_at_midnight():
+    """Chat-14 bug: with data past exclude_end the post side raised ValueError, so the
+    existing exclusion test (data ending before exclude_end) never reached it."""
+    start = datetime(2022, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 3, 31, tzinfo=timezone.utc)
+    store = _make_store_with_coverage("TEST", "D1", start, end)
+    exclude_start = datetime(2025, 7, 1, tzinfo=timezone.utc)
+    exclude_end = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+    periods = fixed_month_periods(store, "TEST", "D1", window_months=6, exclude_start=exclude_start, exclude_end=exclude_end)
+    post = [p for p in periods if p.label.startswith("post_")]
+    assert len(post) == 1, f"expected one post-training window (2026 Q1), got {[p.label for p in post]}"
+    assert post[0].start == datetime(2026, 1, 1, tzinfo=timezone.utc), f"post side must start at midnight, got {post[0].start}"
+    assert post[0].end == end, f"clipped last window must end at the last coverage point, got {post[0].end}"
+    for p in periods:
+        assert not (p.start < exclude_end and p.end > exclude_start), f"{p.label} overlaps the excluded window"
+    print("post-training side generated: " + str([(p.label, p.start.date(), p.end.date()) for p in post]))
+
+
 if __name__ == "__main__":
     test_calendar_year_periods_spans_full_years_and_partial_edges()
     test_calendar_year_periods_single_year_no_data_edge_case()
     test_fixed_month_periods_matches_calendar_year_when_window_is_12()
     test_fixed_month_periods_excludes_training_window()
+    test_month_add_clamps_day_overflow()
+    test_post_training_side_is_generated_and_anchored_at_midnight()
     print("\nAll periods tests passed.")

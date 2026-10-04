@@ -1,0 +1,6 @@
+# version: 261003
+# Dev-only test tooling (not runtime). Install: python3 -m pip install -r requirements-dev.txt
+# coverage: branch-coverage reports (finds branches no test reaches); hypothesis: property-based tests (optional).
+# Unpinned, like requirements.txt - pinning is ROADMAP L13. Dry-run verified on Python 3.14 / macOS arm64 (chat 14).
+coverage>=7.0
+hypothesis>=6.0
