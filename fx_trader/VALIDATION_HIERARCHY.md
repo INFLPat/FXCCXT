@@ -1,3 +1,4 @@
+<!-- version: 261003 -->
 # Validation Hierarchy
 
 Gates what's allowed to reach `RunStore.record_run()`. Cheap checks run
@@ -58,6 +59,10 @@ exposure %, optional buy & hold benchmark/alpha.
 `backtest/rolling.py` (Tier 3 finalists only) and `backtest/portfolio.py`
 (cross-instrument and cross-strategy correlation) stay separate modules
 for their different cost/scope characteristics.
+
+## Annualisation-dependent metrics (MC-1, chat 14)
+
+Tier 0-4 gates use only annualisation-independent quantities (trades, return, profit factor, drawdown, bootstrap CI and probability of loss). Sharpe, Sortino, Calmar, the rolling metrics and the portfolio Sharpe depend on `periods_per_year`; the FX constant (252*24 = 6,048) understates the observed 6,224 bars/year (x1.029; Sharpe-family ~1.4%). Flagged, not changed; variants are compared in chat 28. Detail: `CONTEXT_HANDOFF.md` Section 4f.7.
 
 ## Service tiers (bronze/silver/gold) - a SEPARATE axis from the above
 

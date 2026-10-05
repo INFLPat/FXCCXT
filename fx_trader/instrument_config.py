@@ -1,3 +1,4 @@
+# version: 261003
 """
 instrument_config.py
 
@@ -23,6 +24,9 @@ FX_COST_MODEL = CostModel(commission_per_unit=0.00002, slippage_pips=1.0, pip_si
 FX_COST_MODEL_JPY = CostModel(commission_per_unit=0.00002, slippage_pips=1.0, pip_size=0.01)
 CRYPTO_COST_MODEL = CostModel(commission_pct=0.001, slippage_pct=0.0005)
 
+# MC-1 (chat 14, 261003): FX_PPY understates the OBSERVED sandbox bars per year (6,224 vs 6,048, x1.029), so annualised FX Sharpe/Sortino/Calmar
+# are ~1.4% off. Flagged only - value deliberately NOT changed (it would shift every FX Sharpe-family number); variants compared in chat 28.
+# See CONTEXT_HANDOFF.md Section 4f.7.
 FX_PPY = 252 * 24
 CRYPTO_PPY = 365 * 24
 

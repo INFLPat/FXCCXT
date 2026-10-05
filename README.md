@@ -1,5 +1,5 @@
 <!-- root_readme (repo root: ~/FXCCXT/README.md) -->
-<!-- version: 260930 -->
+<!-- version: 261003 -->
 # FXCCXT
 
 Backtestable, cost-aware FX and crypto trading analysis pipeline: historical
@@ -29,7 +29,7 @@ chat.
 At the end of any session that changed files, Claude delivers:
 
 1. A **list of every changed/created/deleted file, by full repo path**.
-2. A single **`patch_YYMMDD_chatNN.json`** (session date and chat number, e.g. `patch_260930_chat12.json`) - no zips. Operations:
+2. A single **`patch_YYMMDD_chatNN.json`** (session date and chat number, e.g. `patch_260930_chat12.json`; a second or later patch in the same chat takes a letter, e.g. `patch_261003_chat14b.json`) - no zips. Operations:
    `create` (full file, overwrites), `patch` (exact old-text -> new-text, must
    match the current file EXACTLY ONCE or it is skipped and reported) and
    `delete`. `create` is the default for new files or substantial rewrites;

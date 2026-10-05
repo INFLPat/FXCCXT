@@ -1,4 +1,4 @@
-<!-- version: 261001 -->
+<!-- version: 261003 -->
 # CONTEXT HANDOFF - FX/Crypto Trading Analysis Project
 
 Read before touching code. Conventions (FNORD, handoff, de-bloat) are in
@@ -30,6 +30,13 @@ UK GDPR). Core currencies: GBP (primary), USD, EUR.
 - **Commands use `python3` (settled 261001, chat 13)**: new or edited docs/docstrings say `python3`; existing `python` usage lines convert when their file is next edited. Not a functional problem today (nothing executes a bare `python`; `apply_patch.py` uses `sys.executable`) but pasted commands fail on this Mac. Exception: `run_monitor.py`'s printed 'Recover: python run_monitor.py recover' hint and its assertion in `test_run_monitor.py` change together or not at all.
 - **Changed-files record (settled 261001, chat 13)**: every reply that delivers or supersedes a patch payload lists EVERY touched file by full repo path with action and op count (e.g. `fx_trader/ROADMAP.md - patch x5`); the end-of-chat handoff repeats the full list across all payloads applied that chat, naming any failed or superseded payload and what replaced it. The user keeps external file-history records from this list.
 - **Attach lists mark `(in context)` or `(upload)` (settled 261001, chat 13)**: the Context panel repo sync already supplies every committed repo file; only local/gitignored items (DBs, logs, historical copies, pasted terminal output) are ever uploaded.
+- **Patch and chat naming (settled 261003, chat 14)**: several patches in ONE chat take letters - `patch_261003_chat14.json`, `patch_261003_chat14b.json`, `..._chat14c.json`. A topic split ACROSS chats takes `p1`, `p2` on the roadmap chat ID (`14p1`, `16p1`, `30p2`); no existing ID is renumbered. `CHAT_LOG.md` is the append-only record of finished chats; `ROADMAP.md` is forward-looking.
+- **Changed-files record with folders, and interim versions (settled 261003)**: every payload delivery lists each touched file as full repo path, containing folder, action (created/patched), payload, and the new version stamp; a file touched by TWO payloads in one chat is called out so the interim version can be backed up before the second is applied.
+- **Dry run is terminal-only (settled 261003)**: `apply_patch.command` passes only the payload path, so `--dry-run` cannot be entered through it. Preview with `cd ~/FXCCXT && python3 fx_trader/utilities/apply_patch.py <payload.json> --dry-run` (no git preflight, writes nothing). Adding a dry-run option to the launcher is folded into chat 29.
+- **Data manifest gate (settled 261003)**: `audit_sandbox_alignment.py --verify-manifest <file>` checks the (gitignored) sandbox against a saved manifest. It is a DATA gate, not part of `apply_patch` (patch tests stay hermetic). Run it before any sweep or analysis that reads the sandbox (chats 15, 16, 16p1, 25p1, 27, 28, 33p1) and after any re-ingest (then write a new manifest and back it up with the DB).
+- **Evidence labels (settled 261003)**: MEASURED / READ / INFERRED / UNVERIFIED (research notes add MEMORY, UNREAD). Findings without a label are not recorded as fact.
+- **Time policy (settled 261003)**: Section 4f.5; all time handling goes through `time_policy.py`.
+- **Research cadence (settled 261003)**: a small "what did we miss" research chat before each major phase; findings fold into `RESEARCH_NOTES.md` and this file as decision + evidence (ROADMAP 17p1, 17p2, 19p2, 29p1).
 - **Loops self-protect**: every module's own loops carry an explicit ceiling; never rely on a caller.
 - **"De-bloat the text and code of the project"** = run in order: (1) docs: fold resolved sub-task/discussion docs into this file as decision + evidence, keep settled decisions and open items, trim verbosity; (2) code: Power-of-Ten audit, structural redundancy pass, test docstrings state method only (rationale lives in the source file); (3) Claude-side: reconcile memory, Project Instructions and account preferences against the repo; (4) open resolutions (e.g. duplicate sweep scripts). Ask questions first. Acceptance test for every edit: would a chat seeing only the edited file lose any decision, requirement, open question or verified number? Compare old vs new like-for-like, and execute where possible (behaviour-preservation), before committing. Renumbering a section requires patching every reference to it. Keep patch "old" strings short and single-line where possible - a long multi-line span can silently fail to match if the real file wraps differently than assumed; verify against the actual current text before shipping, and fix a reported skip by shortening the anchor, not lengthening it.
 
@@ -89,7 +96,9 @@ person re-runs and reports back.
 | `OandaBroker.fetch_candles` | Run against a real practice account - 2 bugs found and fixed (timestamp needs literal `Z`, not `+00:00`; `count` must not be sent alongside both `from`+`to`). |
 | `CcxtBroker.fetch_candles` vs Binance | Run - exact candle counts, real prices confirmed. |
 | `CcxtBroker.fetch_candles` vs Kraken (live API) | Confirmed real limitation: only serves a rolling recent window. Worked around via `ingest_kraken_gbp_csv.py`'s bulk CSV path. |
-| `run_monitor.py` | Unit-tested in Claude's Linux sandbox (success/failure/interrupt/killed-run/write-failure/recovery paths). Run on the user's machine in two real full sweeps (chat 13, both ok; start/notes/items/end records and meta as expected); macOS peak-memory units and real disk-full not verified. |
+| `run_monitor.py` | Unit-tested in Claude's Linux sandbox (success/failure/interrupt/killed-run/write-failure/recovery paths). Run on the user's machine in two real full sweeps (chat 13, both ok; start/notes/items/end records and meta as expected); macOS peak RSS recorded as 40 MB in both chat-13 sweeps (units consistent with bytes->MB, not independently verified); real disk-full not verified. |
+| `time_policy.py`, `FxStore` bound normalisation, `periods.py` fixes (chat 14) | Regression tests proven to FAIL on the unpatched code (reproduced in Claude's sandbox) and PASS patched; full suite passed on the user's machine (Python 3.14.7). |
+| `audit_sandbox_alignment.py` (chat 14) | Synthetic world with injected faults found exactly (tests passed on the user's machine); run read-only on the real sandbox in Claude's sandbox (Python 3.12, stubbed run_monitor/instrument_config). `main()` with the real run_monitor not yet run by the user. |
 | `OandaBroker.get_quote` / `place_market_order` | **Never run - elevated suspicion.** |
 | `CcxtBroker` against a real (non-fake) exchange | Never run. |
 
@@ -239,6 +248,78 @@ module instead of its own private chunking logic).
 All three explicitly deferred dynamic/rolling correlation, the full
 metric cartesian product, and regime-labeled periods to a future session.
 
+## 4f. CHAT 14 - CROSS-RATE / ALIGNMENT / TIMEZONE AUDIT (261003): FINDINGS AND DECISIONS
+
+Evidence labels: MEASURED (computed on the sandbox; reproduce with `python3 audit_sandbox_alignment.py --chat N`), READ (from code), INFERRED, UNVERIFIED. Sources, definitions, the pipeline, design brief and the open-investigations register (INV-n): `RESEARCH_NOTES.md`. Chat 14 delivered in two payloads: `patch_261003_chat14.json` (code; applied, all 26 test modules passed, commit 8dd6c71, pushed) and `patch_261003_chat14b.json` (documentation).
+
+**4f.1 Built (payload 1).** `time_policy.py` (stored-timestamp contract, `normalize_bound`, `local_view`, `fx_weekly_session`); `FxStore.get_candles` / `get_candles_multi` normalise bounds; `backtest/periods.py` month-clamp and post-side fixes; `audit_sandbox_alignment.py` (checks: format, gaps, cycles, basis, lag, ppy, manifest; argparse; run_monitor adopted; read-only DB); tests `test_time_policy.py`, `test_audit_sandbox_alignment.py`, extended `test_periods.py`; `requirements-dev.txt` (coverage, hypothesis); `.gitignore` adds `fx_trader/reports/*.json|txt`. Verified: new regression tests FAIL on the unpatched code (month-clamp ValueError; end candle dropped) and PASS patched; the audit finds injected faults exactly (+50 bps triangle, +100 bps basis, gap classes, venue hour); full suite passed on the user's machine. NOT yet run by the user: `audit_sandbox_alignment.py` `main()` with the real `run_monitor` (tests exercise `run_audit`, not `main`).
+
+**4f.2 Sandbox facts (MEASURED).** Manifest: 16 instruments, 508,413 rows (file `sandbox_manifest_22Q1to26Q1_261003.json`, computed on the uploaded copy; user verifies the local copy matches with `--verify-manifest`). Every timestamp is stored-format and on the hour; no ask<bid, no OHLC inconsistency; FX has zero zero-spread rows; every crypto bar has bid = ask by construction. Stamps are true UTC: the FX week follows New York 17:00 (US summer: last bar Fri 20:00, reopen Sun 21:00 UTC; US winter: 21:00 / 22:00; change weeks differ), and 215-216 scheduled weekends per FX pair match that rule exactly (215 for GBP_USD, EUR_USD, USD_JPY because of the 2022-06-24 event). Binance vs Kraken hourly returns correlate 0.972 / 0.973 / 0.971 / 0.938 (BTC/ETH/XRP/LTC) at lag 0 and ~0 at +/-1, +/-2: shared stamp convention (absolute open-vs-close convention UNVERIFIED, INV-11). FX-vs-crypto timing: loading of the basis change on GBP_USD returns is 0.05-0.08 at lag 0 and ~-0.01 to -0.04 at +/-1 (a one-hour offset would give ~1): aligned to the hour; sub-hour skew not excluded (INV-12).
+
+**4f.3 Gap catalogue (MEASURED; UTC; classes are candidates until INV-9/10).**
+
+| Class | Event | Detail |
+|---|---|---|
+| PAIR_SPECIFIC | 2022-05-04 21:00 | USD_CHF only, 6h; frozen closes preceded it |
+| PAIR_SPECIFIC | 2022-05-08 21:00 | EUR_GBP only, 4h; thin Sunday-open bar |
+| PAIR_SPECIFIC | 2022-06-24 20:00 -> 06-26 22:00 | EUR_USD, GBP_USD, USD_JPY only: reopen 1h late (50h) |
+| FX_WIDE_UNSCHEDULED | 2022-05-12 05:00 -> 08:00 | all 8 pairs, 3h; crypto traded through |
+| FX_WIDE_UNSCHEDULED | 2022-08-26 20:00 -> 08-28 23:00 | all 8, reopen 2h late (51h) |
+| HOLIDAY_CANDIDATE | 2022-12-23 21:00 -> 12-26 22:00 | 73h |
+| HOLIDAY_CANDIDATE | 2022-12-30 21:00 -> 2023-01-01 23:00 | 50h, reopen 1h late |
+| HOLIDAY_CANDIDATE | 2023-12-22 -> 12-25 and 2023-12-29 -> 2024-01-01 | 73h each |
+| HOLIDAY_CANDIDATE | 24 and 31 Dec 2024 and 2025 (last bar 21:00 UTC, next 22:00 next day) | 25h each (4 events) |
+
+No gap at Good Friday / Easter Monday. Crypto: Binance missing exactly one hour on all four pairs, 2023-03-24 13:00 UTC. Kraken missing hours BTC 21 / ETH 36 / XRP 85 / LTC 406 (union 467; in exactly 1 pair 430, 2 pairs 14, 3 pairs 2, all 4 pairs 21); weekend share 86% / 61% / 56% / 36%; longest runs 5-6 h (~2024-04-14 03:00 in all four; ~2025-11-01 15:00; others). Crypto traded during every FX gap.
+
+**4f.4 Cross-rate results and threshold decisions (MEASURED, bar-close data).**
+
+| Triangle (cycle enumerated from the pair list) | abs residual bps p50 / p99 / p99.9 / max | summed 3-leg spread p50 | suspect bars | exec-band violation share |
+|---|---|---|---|---|
+| GBP_JPY vs GBP_USD x USD_JPY | 0.10 / 2.59 / 7.35 / 11.7 | 4.34 bps | 90 | 0.89% |
+| GBP_CHF vs GBP_USD x USD_CHF | 0.14 / 2.72 / 7.59 / 130.8 | 5.24 bps | 15 | 0.04% |
+| EUR_USD vs EUR_GBP x GBP_USD | 0.13 / 1.43 / 3.36 / 114.1 | 4.54 bps | 1 | 0.01% |
+
+Direct mid sits 0.05-0.08 bps below the synthetic mid in all three (INV-5). Residuals concentrate at 20-22 UTC (GBP_JPY also 17 UTC); no year-on-year drift. Basis (BTC/ETH/XRP/LTC via USDT/GBP, USDT~USD alias): abs p50 5.5 / 6.6 / 8.2 / 11.0 bps, p99 35-80, max 234 / 290 / 249 / 261 - NOT tiered or executable-tested (crypto bars have bid = ask). USDT/venue stress dates in INV-7. **Settled:** (1) data-validity tiers are FIXED, in cost-ratio units: clean <= 0.25, noisy 0.25-1.0, suspect > 1.0 or > 10 bps (provisional edges from this distribution), plus a "bad" tier for stale/leg-attributed bars (not yet implemented); (2) the risk-appetite slider adjusts ONLY the confidence discount applied to noisy bars, never data validity (user agreed: loosening validity with appetite is wrong); (3) all three cross-rate roles are built over time: detector (executable residuals - done), estimator (least-squares strength, leave-one-out attribution - 14p1), diagnostics (dynamics, stale detection, orientation - 14p1); (4) not a strategy on this data (cost ratio p99 0.17-0.44); post-MVP edge only with ticks/latency/depth, likely not Python; (5) USD_CAD has no cycle and cannot be cross-checked; JPY and CHF triangles cannot separate a bad direct pair from a bad USD leg without stale/own-history checks.
+
+**4f.5 Time policy (settled; code: `time_policy.py`).** T1 storage = UTC text in one fixed format (`STORED_TS_FORMAT`); T2 aware datetimes only, naive input rejected; T3 bar stamp = bar OPEN time; T4 conversion to a user's IANA zone is display-only (`local_view`; multi-user: zone chosen per user); T5 analysis periods stay UTC-defined for reproducibility (London quarter boundaries are BST, i.e. one H1 candle off UTC at 3 of 4 boundaries; a per-user `tz` on period generators is a later option, still resolved to UTC); T6 the FX week/day follows New York 17:00 (US DST, not UK): in weeks where US and UK clocks differ the London-time display of the open flips, and DST test matrices are mandatory; T7 local-time daily aggregation must handle 23/25-hour days; T8 intervals should become half-open `[start, end)` for the tick/live era (the current `end = next_start - 1s` with inclusive filtering is correct only for second-resolution bars); T9 all new code uses `time_policy`, no ad-hoc `isoformat()`/`strftime` for DB bounds. Stage 2 (after the source inventory): canonical integer `ts_utc` for ordering/joins with raw timestamps kept as provenance and an explicit per-source stamp convention (30p2).
+
+**4f.6 Bugs found and fixed (both reproduced on unpatched code, regression-tested).** BUG-1: `isoformat()` bounds end in `+00:00`; the stored text has `.000000000Z`; at character 20 `+` (ASCII 43) sorts before `.` (46), so an inclusive `<= end` silently excluded the candle stamped exactly at the bound (`GBP_USD`: 26,396 of 26,397 rows returned). Start bounds worked by luck. Affected `compare_periods`, the partial last-year bar in `visualize_period_comparison`, and `run_out_of_time_validation`. Earlier validated results were NOT affected (`run_full_sweep.py` builds bounds in stored format; the hierarchy script passes none) - READ. Fix: `FxStore` normalises bounds. BUG-2: `_month_add` used `replace(month=...)`, raising on day 29-31; the post-training side started at `exclude_end` (2025-12-31 23:59:59), so `run_out_of_time_validation.py` would have raised before any output (blocking chat 16); `test_periods` never reached the post side. Fix: clamp the day; post side starts at `exclude_end + 1s`. **Bug classes seen:** text-format contracts, boundary off-by-one, calendar arithmetic, branches no test reaches, silently assumed constants, convention drift between modules, docstring drift. **Methods adopted:** boundary-triplet tests (bound and +/-1 unit); day-of-month x month-offset matrices and DST-date matrices; real-data invariants as tests (e.g. `get_candles(coverage start, end)` returns exactly the coverage count); differential tests (two generators that must agree); test-the-test (inject a known bug, confirm a test fails - done for both bugs); every bug gets a regression test named with its ID; metamorphic tests (inverting a pair leaves the residual unchanged); warnings-as-errors runs; assumption register. **Candidates:** `coverage.py` branch reports (run occasionally by the user, dev-only), `hypothesis` property tests (installable, dev-only), golden-file regression, docstring-claim tests, mutation spot checks. **Assumption register:** AR-1 FX_PPY = 252*24 (MC-1); AR-2 fills at the signal bar's close (same-bar fills); AR-3 crypto bars have bid = ask so cost is commission/slippage only; AR-4 24 bars per FX day; AR-5 bar stamp = open; AR-6 USDT~USD alias; AR-7 all sources UTC; AR-8 sandbox FX is OANDA only.
+
+**4f.7 Metric caveat MC-1 (annualisation).** `FX_PPY = 252*24 = 6,048` vs observed 6,224 bars/year (x1.029; Sharpe-family scale sqrt = 1.0145, ~1.4%). Crypto USDT 8,766 vs 8,760 (ok); LTC/GBP 8,671 (x0.990, trips the 1% warning). Annualisation-DEPENDENT: `sharpe_ratio`, `sortino_ratio`, `calmar_ratio` (CAGR years), `rolling_*` Sharpe/Sortino, `portfolio` equal-weight Sharpe. NOT dependent: total return, drawdown metrics, profit factor, expectancy, payoff, Omega, VaR/CVaR, tail ratio, skew/kurtosis, Kelly, exposure, bootstrap CIs, and all four base-metric candidates (`ci_lower_bound`, its cost-adjusted form, `expectancy_cost_adjusted`, `effect_size`). All Tier 0-4 gates are independent of it. The design's leaning candidate (Sortino x trust discount) IS affected. **Decision:** compute all variants and compare, do not pick blindly: (a) flag (now: this entry, a comment in `instrument_config.py`, the audit warning), (b) change (observed bars/year, and a time-based annualisation), (c) deliberate re-baseline before a Sharpe-family metric becomes load-bearing. Rank stability across variants becomes an axis of the chat-28 base-metric test (`compute_metrics` already takes `periods_per_year`). Do not change the constant until then (it would shift every FX Sharpe-family value and break byte-identical regression checks).
+
+**4f.8 Decisions settled in chat 14 (do not relitigate without a new reason).** Holidays vs outages learning and handling (RESEARCH_NOTES Section 6); two separate data-source threads (sandbox/research vs live feed); free/research licences during R&D, redistribution licence started at MVP / single-user live (P15b); multiple live sources mandatory; raw sandbox data stays untouched - QC findings go in a side table (instrument, timestamp, class, evidence) and validation runs both raw and masked (the difference is a robustness metric); Epps guard folded into confidence weighting; sandbox universe grows in stages (as-is -> augmented incl. stablecoin pairs -> MVP suite -> later additions), registry designed for future-proof flexibility; strength definitions kept as views; two-speed architecture; executability is venue-scoped; stdlib-first with optional numpy path; coverage/hypothesis dev-only; bounds normalised inside `FxStore`; patches: letters for multiple patches in one chat, `p1/p2` for sub-topic chats split across chats; scope split S1 (chat 14) / S2 (14p1); research chats added to the plan.
+
+**4f.9 Parked/deferred, with owners.** All INV-1..INV-20 (RESEARCH_NOTES Section 10) and the ROADMAP deferred-capabilities table (Section 9). `apply_patch.command` cannot pass `--dry-run` (it passes only the payload path; use the terminal command in `utilities/README.md`): add a dry-run option to the launcher and README - folded into chat 29 (de-bloat #2, which reviews utilities). 
+
+**4f.10 Chat 14 coverage ledger (full review of this chat).**
+
+| Item discussed | Recorded in |
+|---|---|
+| macOS RSS 40 MB (scope item 1) | Section 3 run_monitor row |
+| Triangles, executable bands, thresholds, basis, tiers | 4f.4; RESEARCH_NOTES 2-3; ROADMAP 14p1 |
+| Alignment, gaps, venue outages, Kraken stats | 4f.3; RESEARCH_NOTES 6; INV-9/10/13/14/19 |
+| Timezone audit, time policy, per-user zones, DST, NY session | 4f.5; `time_policy.py` |
+| Bugs 1-2, methodology, assumption register | 4f.6 |
+| MC-1 annualisation and variants | 4f.7; ROADMAP chat 28; CONFIDENCE_SIZING_DESIGN Section 5; VALIDATION_HIERARCHY; `instrument_config.py` |
+| Holidays vs outages; fault-injection replay | RESEARCH_NOTES 6; ROADMAP P7 |
+| Two data-source threads, free vs paid, licensing | RESEARCH_NOTES 5; ROADMAP risk register, 16p1, 30p1, P15b |
+| Storage: source column vs tables, canonical timestamp | RESEARCH_NOTES 5; ROADMAP 30p2 |
+| Epps effect, confidence input | RESEARCH_NOTES 7; CONFIDENCE_SIZING_DESIGN Section 6 |
+| Crypto safe-house H1/H2 | RESEARCH_NOTES 4; ROADMAP 21p1 |
+| Can't-do-now (IRP, depth, swaps) | RESEARCH_NOTES 8; ROADMAP Section 9; P12 aims |
+| Executability, venue edges, crypto nodes, stablecoin basis | RESEARCH_NOTES 2, 4; ROADMAP 14p1, 25p1 |
+| Universe: hard-coded 16, staged growth | RESEARCH_NOTES 4; ROADMAP 19p1, 25p1, P11b |
+| Same-bar-close fills, integrity manifest, licensing, single source, MC-1, point-in-time universe | ROADMAP risk register; AR-2 |
+| Manifest gate (when to run) | Working Conventions; ROADMAP chats 15, 16, 16p1, 25p1, 27, 28, 33p1 |
+| Research chats; reading list; literature leads | ROADMAP 17p1, 17p2, 19p2, 29p1; RESEARCH_NOTES 1, 9 |
+| Residual/stress-day causes | RESEARCH_NOTES 10 (INV-1..7) |
+| numpy/coverage/hypothesis dependency decisions | RESEARCH_NOTES 4; `requirements-dev.txt` |
+| Reproducibility metadata; preflight gate | RESEARCH_NOTES 4; ROADMAP 33p1 |
+| Roadmap Status/Date columns, CHAT_LOG, p-suffix IDs | ROADMAP; `CHAT_LOG.md` |
+| Patch naming (letters vs p-suffix); dry-run is terminal-only; backup list rule | Working Conventions; `utilities/README.md` |
+| User-confirmable unknowns (Kraken stablecoin CSVs, Python 3.14 wheels) | INV-16, INV-17 |
+
 ## 5. HOLZMANN REVIEW
 
 Applied project-wide. New files should be written to the same standard:
@@ -252,7 +333,7 @@ size, no bare `except: pass`.
 - Investor pack (process explainer, flow chart, market/competitor comparison) runs in parallel; a lawyer reviews return language before external use.
 
 
-- Timezone policy (chat 14 audit): user is London-based and wants everything aligned to London time. Run-monitor stores UTC + Europe/London. Stored market-data timestamps are UTC (OANDA `Z`, Binance/ccxt UTC, Kraken epoch, `sandbox_config.py`) and `periods.py` year/quarter boundaries are UTC. SETTLED 260930 (chat 12): keep storage UTC, convert for display only (London time); chat 14 audits conformance. Unknown: OANDA candle alignment timezone (`fetch_candles` sets none).
+- [Chat 14: audited; findings and settled policy are in Section 4f.5 - the original note below is kept for history] Timezone policy (chat 14 audit): user is London-based and wants everything aligned to London time. Run-monitor stores UTC + Europe/London. Stored market-data timestamps are UTC (OANDA `Z`, Binance/ccxt UTC, Kraken epoch, `sandbox_config.py`) and `periods.py` year/quarter boundaries are UTC. SETTLED 260930 (chat 12): keep storage UTC, convert for display only (London time); chat 14 audits conformance. Unknown: OANDA candle alignment timezone (`fetch_candles` sets none).
 - `run_full_sweep.py` needs a permanent home / resolution against
   `run_validation_hierarchy_real_data.py` (does it replace or extend it -
   your call, not made here). The original `data/full_sweep_runs.db` was lost (Section 4d); reproduction DBs are local/gitignored - back up `fx_trader/data/*.db` manually, git cannot recover them.
@@ -274,6 +355,8 @@ size, no bare `except: pass`.
   on your input, can't run in this sandbox regardless.
 
 ## 7. IMMEDIATE NEXT STEP
+
+**Updated 261003 (chat 14): superseded by `ROADMAP.md` Section 4 (Status column). After payload 2 of chat 14: 14p1 (currency-graph engine), 15, 16, 16p1, 17.**
 
 **Updated 260929: superseded by `ROADMAP.md` Sections 3-4 (phases and chat-by-chat plan). The paragraph below is the pre-260929 summary; its item (2), acquiring a second out-of-time window, is dropped (26Q2 unpublished, 22Q1-26Q1 is the final sandbox).**
 

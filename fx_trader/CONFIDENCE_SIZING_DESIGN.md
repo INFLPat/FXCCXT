@@ -1,4 +1,4 @@
-<!-- version: 260929 -->
+<!-- version: 261003 -->
 # Confidence-Weighted Multi-Strategy Sizing - Design Spec
 
 How the five strategies (SMA, RSI, MACD, RSI+MACD confluence, Bollinger)
@@ -151,6 +151,8 @@ side, compare on real data, let results decide, possibly per-context.
 | Profit factor / expectancy | Simple, intuitive | No risk-adjustment |
 | Effect-size (`mean_return / standard_error`) | Rewards a well-SUPPORTED edge, not just a good average | New formula, not yet built anywhere |
 
+**ANNUALISATION CAVEAT (MC-1, chat 14):** Sortino, Calmar and Sharpe depend on `periods_per_year`; `FX_PPY` = 6,048 understates the observed ~6,224 bars/year (Sharpe-family ~1.4%). The four candidates below other than Sortino/Calmar are unaffected. Compute flag/observed/re-baseline variants and check rank stability before ranking by these (`CONTEXT_HANDOFF.md` Section 4f.7, chat 28).
+
 **Leaning**: point estimate (Sortino) x trust discount (CI width/lower
 bound), rather than one metric or an untested blend. The bootstrap-CI-
 lower-bound fix above is a working instance of this already.
@@ -187,6 +189,8 @@ Candidates (cheap -> expensive):
 - **Correlation with currently-open positions** (`portfolio.py`, live
   use) - must run cross-STRATEGY as well as cross-instrument (RSI/
   Confluence correlate +0.65 avg on the same instrument, Section 4e).
+- **Data completeness / asynchrony (Epps guard)** (chat 14, user request): discount confidence when an instrument's bars are missing or stale (e.g. Kraken GBP pairs: 21-406 missing hours) or when a cross-instrument correlation is estimated at a frequency where asynchrony biases it towards zero; inner-join, never forward-fill. Weight input / scalar multiplier. See `RESEARCH_NOTES.md` Section 7.
+- **Executability / cost ratio** (chat 14): residual-to-spread ratio and venue-scoped executability of a multi-leg idea. Data-validity tiers are FIXED; the risk-appetite slider adjusts only this discount.
 - **Market cap/liquidity** (crypto) - blocked, no data source.
 - **Regulatory/eligibility status** - a separate GATE, not a confidence
   input.
@@ -355,6 +359,10 @@ service-tier split.
 - `MAX_GRID_COMBINATIONS` revisit - needed once the combination layer's
   own grid is added to validation.
 - Session/liquidity time-of-day module - lower priority.
+- Data-completeness (Epps) confidence module - spec in Section 6; build with P9.
+- Annualisation variants (MC-1) before any Sharpe/Sortino/Calmar base metric is used - chat 28.
+- Depth, last look and latency measured in P12 before Section 8/9 debounce and rebalance numbers are trusted.
+- Fault-injection replay (outage/holiday classes) - P7.
 - Effect-size-over-sample-size base metric candidate - built, not yet
   chosen as a winner (Section 5).
 - `OandaBroker.get_quote`/`place_market_order` - never run live, doubly

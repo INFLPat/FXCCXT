@@ -1,5 +1,5 @@
 <!-- fx_trader_utilities_readme (fx_trader/utilities/README.md) -->
-<!-- version: 260930 -->
+<!-- version: 261003 -->
 # apply_patch.py - session handoff tool
 
 Applies a Claude session's file changes to this repo: creates new files,
@@ -27,7 +27,7 @@ chmod +x fx_trader/utilities/apply_patch.command
      python3 fx_trader/utilities/apply_patch.py ~/Downloads/patch.json
      ```
 
-Add `--dry-run` first if you want to preview the diff for every operation
+NOTE: the double-click launcher passes only the JSON path and cannot take `--dry-run`; use the terminal for a preview (known gap, roadmap chat 29). Add `--dry-run` first if you want to preview the diff for every operation
 without writing anything:
 ```bash
 python3 fx_trader/utilities/apply_patch.py ~/Downloads/patch.json --dry-run

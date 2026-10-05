@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 261001 -->
+<!-- version: 261003 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -18,9 +18,14 @@ fx_trader/
 ├── CONFIDENCE_SIZING_DESIGN.md     # Phase 1-4 spec: multi-strategy confidence scoring & position sizing (design only, not built)
 ├── CONTEXT_HANDOFF.md              # current state, read first
 ├── ROADMAP.md                      # sequenced build/test plan, risk register, sandbox status
+├── RESEARCH_NOTES.md               # sources read, definitions, cross-rate pipeline, cartesian design brief, open investigations (INV-n)
+├── CHAT_LOG.md                     # append-only record of finished chats and patches
 ├── requirements.txt            # pip dependencies (unpinned - see ROADMAP.md L13)
 ├── sandbox_config.py               # shared sandbox window/filename source of truth
 ├── instrument_config.py            # shared 16-instrument universe, cost models, sizing constants
+├── time_policy.py                 # time conventions: stored-timestamp contract, bound normalisation, display-only local time, NY-5pm FX session
+├── audit_sandbox_alignment.py     # read-only sandbox audit: formats, gaps, cross-rate cycles, basis, timing, bars/year, manifest
+├── requirements-dev.txt           # dev-only: coverage, hypothesis
 ├── run_monitor.py                  # run monitor: duration/metadata JSONL logs into logs/ (gitignored); see its docstring
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
 ├── ingest_kraken_gbp_csv.py        # Kraken bulk CSV loader for GBP-crypto, quarterly + pre-2023 'historical' folder
@@ -59,7 +64,7 @@ fx_trader/
 └── run_*.py                        # synthetic-data demos (the real-sandbox run_*.py scripts are listed above)
 ```
 
-Local-only, gitignored (not in the tree above): `data/*.db`, `kraken_csv/`, `charts/*.png|html`, `logs/*.jsonl`, `.env`. See `.gitignore`.
+Local-only, gitignored (not in the tree above): `data/*.db`, `kraken_csv/`, `charts/*.png|html`, `logs/*.jsonl`, `reports/*.json|txt`, `.env`. See `.gitignore`.
 
 ## File versioning
 
@@ -83,6 +88,7 @@ python3 run_validation_hierarchy_real_data.py
 python3 run_full_sweep.py --start YYYY-MM-DD --end YYYY-MM-DD --chat N   # all strategies x all instruments over a window, Tier 0-4 + correlation checks
 python3 run_out_of_time_validation.py   # frozen-survivor replay on out-of-training windows
 python3 visualize_period_comparison.py  # period-comparison charts into charts/
+python3 audit_sandbox_alignment.py --chat N [--verify-manifest reports/<manifest>.json]   # read-only sandbox audit -> reports/ (run from fx_trader/)
 ```
 
 ## Cloud database
