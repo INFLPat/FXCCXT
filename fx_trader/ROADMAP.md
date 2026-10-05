@@ -1,11 +1,11 @@
-<!-- version: 261003 -->
+<!-- version: 261005 -->
 # Roadmap
 
 Read after `CONTEXT_HANDOFF.md` and `CONFIDENCE_SIZING_DESIGN.md`; research context in `RESEARCH_NOTES.md`. Rewritten 260929 (chat 10); housekeeping 260930 (chat 11); restructured 261003 (chat 14: p-suffix chat IDs, Status/Date columns, research chats, deferred-capabilities table, new risks). Finished chats are recorded in `CHAT_LOG.md`, not here. Contents: 0 baseline, 1 MVP, 2 sandbox and validation data, 3 phases, 4 chat plan, 5 parallel/post-MVP, 6 de-bloat, 7 risk register, 8 extras, 9 deferred capabilities.
 
 ## 0. Honest baseline
 
-7 of 80 tested (strategy, instrument) combinations cleared Tier 4, on a single 6-month window (2025 H2), several on wafer-thin CI lower bounds (GBP_JPY +0.14%, +0.13%). Not a demonstrated edge. Everything below is infrastructure to find out whether an edge exists. Pace: project started 260910; chats 1-13 complete by 261001; chat 14 in progress 261003. Target: 3-4 tighter one-topic chats per week. Chat 14 added about 14 chats/items to the plan (research, second-source QC, universe, storage, manifest): roughly +4 weeks (low confidence).
+7 of 80 tested (strategy, instrument) combinations cleared Tier 4, on a single 6-month window (2025 H2), several on wafer-thin CI lower bounds (GBP_JPY +0.14%, +0.13%). Not a demonstrated edge. Everything below is infrastructure to find out whether an edge exists. Pace: project started 260910; chats 1-14 complete by 261005. Target: 3-4 tighter one-topic chats per week. Chat 14 added about 14 chats/items to the plan (research, second-source QC, universe, storage, manifest): roughly +4 weeks (low confidence).
 
 ## 1. MVP
 
@@ -102,7 +102,7 @@ Rules: one topic per chat, finished inside one 24h window. Roadmap chat IDs: a t
 
 | # | Topic | Size | Attach (besides CONTEXT_HANDOFF.md) | After | Status | Date |
 |---|---|---|---|---|---|---|
-| 14 | S1: cross-rate / alignment / timezone audit, bug fixes, `time_policy.py`, docs. Payload 1 applied + pushed (commit 8dd6c71); payload 2 (docs) pending | M-L | sandbox_22Q1to26Q1.db (upload) | 12 | IN PROGRESS | 261003 |
+| 14 | S1: cross-rate / alignment / timezone audit, bug fixes, `time_policy.py`, docs. Payloads: 8dd6c71 (code), 3a2fc4b (docs), close-out chat14c | M-L | sandbox_22Q1to26Q1.db (upload) | 12 | DONE | 261005 |
 | 14p1 | S2: currency-graph engine - typed edges (quoted/basis/venue), crypto nodes, orientation canonicalisation, executable directed edges, cycle enumeration (+Bellman-Ford), least-squares strengths with leave-one-out attribution and strength views, stdlib reference + optional numpy path, property tests; plus sandbox-only residual-cause checks INV-2/3/4/5 (RESEARCH_NOTES 10) | L | audit_sandbox_alignment.py, time_policy.py, data/store.py, backtest/portfolio.py, instrument_config.py, RESEARCH_NOTES.md; audit report json + sandbox DB (upload) | 14 | | |
 | 15 | Full-window compute dry run (M) | S | run_full_sweep.py; `python3 run_monitor.py summary <log>` output or logs/run_log_*.jsonl (upload) | 13 | | |
 | 16 | Out-of-time frozen-candidate replay: run and interpret (M). Unblocked by the chat-14 periods fix | M | run_out_of_time_validation.py, backtest/periods.py, backtest/validation_orchestrator.py | 13, 14, 15 | | |
@@ -135,10 +135,10 @@ Rules: one topic per chat, finished inside one 24h window. Roadmap chat IDs: a t
 | 33 | Cost-model update (real fees, financing, small-account floors, real crypto spreads, same-bar-fill sensitivity) and re-run of cartesian conclusions | M | backtest/engine.py (CostModel), instrument_config.py | 30 | | |
 | 33p1 | Run manifest and reproducibility: per-run metadata (commit, data hash, config versions, libraries, seeds, decision-time quotes/flags), preflight gate before backtest or live (M) | M | run_monitor.py, data/run_store.py | 33 | | |
 
-Chats 11-13 are DONE and recorded in `CHAT_LOG.md`.
+Chats 11-13 are DONE and recorded in `CHAT_LOG.md`; chat 14 is DONE (its row is kept above for the attach/after references).
 
 **Run-monitor adoption (from chat 12; API in `run_monitor.py`'s docstring). Rule: every new long-running script adopts it from creation.**
-- ADOPTED: `run_full_sweep.py` (chat 12), `audit_sandbox_alignment.py` (chat 14; `main()` with the real monitor not yet run by the user).
+- ADOPTED: `run_full_sweep.py` (chat 12), `audit_sandbox_alignment.py` (chat 14; `main()` run by the user 261005: ok, 3.9 s).
 - Chat 13: DONE (CLI args, window/coverage notes) - re-windowed `run_full_sweep.py`. The old 2025 H2 script copy is unmonitored by definition.
 - `fetch_sandbox_data.py` adopts if touched, else at its next re-run (sandbox is final, so unlikely; 25p1 may touch it).
 - Chat 16: `run_out_of_time_validation.py` adopts when run (one `item` per candidate x window; `count` windows/candles).

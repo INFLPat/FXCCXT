@@ -1,4 +1,4 @@
-<!-- version: 261003 -->
+<!-- version: 261005 -->
 # CONTEXT HANDOFF - FX/Crypto Trading Analysis Project
 
 Read before touching code. Conventions (FNORD, handoff, de-bloat) are in
@@ -98,7 +98,7 @@ person re-runs and reports back.
 | `CcxtBroker.fetch_candles` vs Kraken (live API) | Confirmed real limitation: only serves a rolling recent window. Worked around via `ingest_kraken_gbp_csv.py`'s bulk CSV path. |
 | `run_monitor.py` | Unit-tested in Claude's Linux sandbox (success/failure/interrupt/killed-run/write-failure/recovery paths). Run on the user's machine in two real full sweeps (chat 13, both ok; start/notes/items/end records and meta as expected); macOS peak RSS recorded as 40 MB in both chat-13 sweeps (units consistent with bytes->MB, not independently verified); real disk-full not verified. |
 | `time_policy.py`, `FxStore` bound normalisation, `periods.py` fixes (chat 14) | Regression tests proven to FAIL on the unpatched code (reproduced in Claude's sandbox) and PASS patched; full suite passed on the user's machine (Python 3.14.7). |
-| `audit_sandbox_alignment.py` (chat 14) | Synthetic world with injected faults found exactly (tests passed on the user's machine); run read-only on the real sandbox in Claude's sandbox (Python 3.12, stubbed run_monitor/instrument_config). `main()` with the real run_monitor not yet run by the user. |
+| `audit_sandbox_alignment.py` (chat 14) | Synthetic world with injected faults found exactly (tests passed on the user's machine); run read-only on the real sandbox in Claude's sandbox (Python 3.12, stubbed run_monitor/instrument_config). `main()` with the real run_monitor run by the user 261005 (ok in 3.9 s; manifest verified; figures reproduced; Python 3.14.7). |
 | `OandaBroker.get_quote` / `place_market_order` | **Never run - elevated suspicion.** |
 | `CcxtBroker` against a real (non-fake) exchange | Never run. |
 
@@ -250,9 +250,9 @@ metric cartesian product, and regime-labeled periods to a future session.
 
 ## 4f. CHAT 14 - CROSS-RATE / ALIGNMENT / TIMEZONE AUDIT (261003): FINDINGS AND DECISIONS
 
-Evidence labels: MEASURED (computed on the sandbox; reproduce with `python3 audit_sandbox_alignment.py --chat N`), READ (from code), INFERRED, UNVERIFIED. Sources, definitions, the pipeline, design brief and the open-investigations register (INV-n): `RESEARCH_NOTES.md`. Chat 14 delivered in two payloads: `patch_261003_chat14.json` (code; applied, all 26 test modules passed, commit 8dd6c71, pushed) and `patch_261003_chat14b.json` (documentation).
+Evidence labels: MEASURED (computed on the sandbox; reproduce with `python3 audit_sandbox_alignment.py --chat N`), READ (from code), INFERRED, UNVERIFIED. Sources, definitions, the pipeline, design brief and the open-investigations register (INV-n): `RESEARCH_NOTES.md`. Chat 14 delivered in two payloads: `patch_261003_chat14.json` (code; applied, all 26 test modules passed, commit 8dd6c71, pushed) and `patch_261003_chat14b.json` (documentation, commit 3a2fc4b), plus a close-out `patch_261005_chat14c.json` (audit run result and status).
 
-**4f.1 Built (payload 1).** `time_policy.py` (stored-timestamp contract, `normalize_bound`, `local_view`, `fx_weekly_session`); `FxStore.get_candles` / `get_candles_multi` normalise bounds; `backtest/periods.py` month-clamp and post-side fixes; `audit_sandbox_alignment.py` (checks: format, gaps, cycles, basis, lag, ppy, manifest; argparse; run_monitor adopted; read-only DB); tests `test_time_policy.py`, `test_audit_sandbox_alignment.py`, extended `test_periods.py`; `requirements-dev.txt` (coverage, hypothesis); `.gitignore` adds `fx_trader/reports/*.json|txt`. Verified: new regression tests FAIL on the unpatched code (month-clamp ValueError; end candle dropped) and PASS patched; the audit finds injected faults exactly (+50 bps triangle, +100 bps basis, gap classes, venue hour); full suite passed on the user's machine. NOT yet run by the user: `audit_sandbox_alignment.py` `main()` with the real `run_monitor` (tests exercise `run_audit`, not `main`).
+**4f.1 Built (payload 1).** `time_policy.py` (stored-timestamp contract, `normalize_bound`, `local_view`, `fx_weekly_session`); `FxStore.get_candles` / `get_candles_multi` normalise bounds; `backtest/periods.py` month-clamp and post-side fixes; `audit_sandbox_alignment.py` (checks: format, gaps, cycles, basis, lag, ppy, manifest; argparse; run_monitor adopted; read-only DB); tests `test_time_policy.py`, `test_audit_sandbox_alignment.py`, extended `test_periods.py`; `requirements-dev.txt` (coverage, hypothesis); `.gitignore` adds `fx_trader/reports/*.json|txt`. Verified: new regression tests FAIL on the unpatched code (month-clamp ValueError; end candle dropped) and PASS patched; the audit finds injected faults exactly (+50 bps triangle, +100 bps basis, gap classes, venue hour); full suite passed on the user's machine. RUN by the user 261005 (Python 3.14.7): `main()` with the real `run_monitor` ok in 3.9 s (`logs/run_log_261005.jsonl`; report `reports/audit_220101to260331_chat14_261005.json`); `--verify-manifest` verified_ok (local sandbox identical to the uploaded copy: 16 instruments, 508,413 rows); every figure in 4f.2-4f.4 reproduced exactly.
 
 **4f.2 Sandbox facts (MEASURED).** Manifest: 16 instruments, 508,413 rows (file `sandbox_manifest_22Q1to26Q1_261003.json`, computed on the uploaded copy; user verifies the local copy matches with `--verify-manifest`). Every timestamp is stored-format and on the hour; no ask<bid, no OHLC inconsistency; FX has zero zero-spread rows; every crypto bar has bid = ask by construction. Stamps are true UTC: the FX week follows New York 17:00 (US summer: last bar Fri 20:00, reopen Sun 21:00 UTC; US winter: 21:00 / 22:00; change weeks differ), and 215-216 scheduled weekends per FX pair match that rule exactly (215 for GBP_USD, EUR_USD, USD_JPY because of the 2022-06-24 event). Binance vs Kraken hourly returns correlate 0.972 / 0.973 / 0.971 / 0.938 (BTC/ETH/XRP/LTC) at lag 0 and ~0 at +/-1, +/-2: shared stamp convention (absolute open-vs-close convention UNVERIFIED, INV-11). FX-vs-crypto timing: loading of the basis change on GBP_USD returns is 0.05-0.08 at lag 0 and ~-0.01 to -0.04 at +/-1 (a one-hour offset would give ~1): aligned to the hour; sub-hour skew not excluded (INV-12).
 
@@ -356,7 +356,7 @@ size, no bare `except: pass`.
 
 ## 7. IMMEDIATE NEXT STEP
 
-**Updated 261003 (chat 14): superseded by `ROADMAP.md` Section 4 (Status column). After payload 2 of chat 14: 14p1 (currency-graph engine), 15, 16, 16p1, 17.**
+**Updated 261003 (chat 14): superseded by `ROADMAP.md` Section 4 (Status column). Chat 14 closed 261005. Next: 14p1 (currency-graph engine), 15, 16, 16p1, 17.**
 
 **Updated 260929: superseded by `ROADMAP.md` Sections 3-4 (phases and chat-by-chat plan). The paragraph below is the pre-260929 summary; its item (2), acquiring a second out-of-time window, is dropped (26Q2 unpublished, 22Q1-26Q1 is the final sandbox).**
 
