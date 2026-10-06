@@ -37,6 +37,8 @@ UK GDPR). Core currencies: GBP (primary), USD, EUR.
 - **Evidence labels (settled 261003)**: MEASURED / READ / INFERRED / UNVERIFIED (research notes add MEMORY, UNREAD). Findings without a label are not recorded as fact.
 - **Time policy (settled 261003)**: Section 4f.5; all time handling goes through `time_policy.py`.
 - **Research cadence (settled 261003)**: a small "what did we miss" research chat before each major phase; findings fold into `RESEARCH_NOTES.md` and this file as decision + evidence (ROADMAP 17p1, 17p2, 19p2, 29p1).
+- **Run-vs-ask rule (settled 261005, chat 14p1)**: Claude runs a test itself only if ALL hold: pure/stdlib, no network, no real DB or real outputs, deterministic, cheap (short run, small output), and a failed `apply_patch` would otherwise cost a round trip. Otherwise the user runs it and pastes the output: real sandbox DB, network, Python-3.14-specific, numpy/matplotlib paths, long runs, anything touching gitignored outputs. Label every result: run by Claude (3.12 sandbox) / run by user (3.14.7) / read only.
+- **Costs gate (settled 261005)**: profitability is a core requirement of the whole project. No fee is defaulted anywhere; no profitability or arbitrage conclusion is reportable until real costs are applied (ROADMAP chat 33). Data-validity work does not depend on fees. Account state and the pre-MVP package/source/subscription discussion: ROADMAP 29p2.
 - **Loops self-protect**: every module's own loops carry an explicit ceiling; never rely on a caller.
 - **"De-bloat the text and code of the project"** = run in order: (1) docs: fold resolved sub-task/discussion docs into this file as decision + evidence, keep settled decisions and open items, trim verbosity; (2) code: Power-of-Ten audit, structural redundancy pass, test docstrings state method only (rationale lives in the source file); (3) Claude-side: reconcile memory, Project Instructions and account preferences against the repo; (4) open resolutions (e.g. duplicate sweep scripts). Ask questions first. Acceptance test for every edit: would a chat seeing only the edited file lose any decision, requirement, open question or verified number? Compare old vs new like-for-like, and execute where possible (behaviour-preservation), before committing. Renumbering a section requires patching every reference to it. Keep patch "old" strings short and single-line where possible - a long multi-line span can silently fail to match if the real file wraps differently than assumed; verify against the actual current text before shipping, and fix a reported skip by shortening the anchor, not lengthening it.
 
@@ -79,7 +81,7 @@ constraint throughout.
 
 ## 3. VERIFIED VS. NOT
 
-**User's environment (stated chat 12; do not re-ask):** Python 3.14.7 on macOS, `python3` only - give every command to the user as `python3`, never `python` (chat 13). Verified chat 13: the full test suite and a full 80-run sweep ran on 3.14.7 (stdlib/sqlite paths; psycopg2/ccxt/requests/matplotlib not exercised). Claude's build sandbox runs Python 3.12.3, so anything version-sensitive is unverified on 3.14. Not known: whether `psycopg2-binary`, `ccxt`, `requests` and `matplotlib` have working 3.14 builds (run_monitor.py uses stdlib only).
+**User's environment (stated chat 12; do not re-ask):** Python 3.14.7 on macOS, `python3` only - give every command to the user as `python3`, never `python` (chat 13). Verified chat 13: the full test suite and a full 80-run sweep ran on 3.14.7 (stdlib/sqlite paths; psycopg2/ccxt/requests/matplotlib not exercised). Claude's build sandbox runs Python 3.12.3, so anything version-sensitive is unverified on 3.14. Verified 261005 (INV-17): `psycopg2-binary` 2.9.13, `ccxt` 4.5.78, `requests` 2.34.2, `numpy` 2.5.3 and `matplotlib` 3.11.2 import and construct on 3.14.7 (psycopg2 never connected to a DB, ccxt never reached an exchange) (run_monitor.py uses stdlib only).
 
 Build sandbox has no network access - anything needing OANDA/an exchange/a
 real cloud DB is written carefully but unrun by Claude directly; the
@@ -99,6 +101,7 @@ person re-runs and reports back.
 | `run_monitor.py` | Unit-tested in Claude's Linux sandbox (success/failure/interrupt/killed-run/write-failure/recovery paths). Run on the user's machine in two real full sweeps (chat 13, both ok; start/notes/items/end records and meta as expected); macOS peak RSS recorded as 40 MB in both chat-13 sweeps (units consistent with bytes->MB, not independently verified); real disk-full not verified. |
 | `time_policy.py`, `FxStore` bound normalisation, `periods.py` fixes (chat 14) | Regression tests proven to FAIL on the unpatched code (reproduced in Claude's sandbox) and PASS patched; full suite passed on the user's machine (Python 3.14.7). |
 | `audit_sandbox_alignment.py` (chat 14) | Synthetic world with injected faults found exactly (tests passed on the user's machine); run read-only on the real sandbox in Claude's sandbox (Python 3.12, stubbed run_monitor/instrument_config). `main()` with the real run_monitor run by the user 261005 (ok in 3.9 s; manifest verified; figures reproduced; Python 3.14.7). |
+| `currency_graph/` package (chat 14p1) | 12 stdlib unit/property/differential tests run by Claude (Python 3.12.3, `-W error`); differential test used VERBATIM COPIES of 5 audit functions (real audit not importable in Claude's sandbox). NOT yet run on the user's machine (3.14.7) or on real sandbox data (14p2). Details: Section 4g. |
 | `OandaBroker.get_quote` / `place_market_order` | **Never run - elevated suspicion.** |
 | `CcxtBroker` against a real (non-fake) exchange | Never run. |
 
@@ -320,6 +323,26 @@ Direct mid sits 0.05-0.08 bps below the synthetic mid in all three (INV-5). Resi
 | Patch naming (letters vs p-suffix); dry-run is terminal-only; backup list rule | Working Conventions; `utilities/README.md` |
 | User-confirmable unknowns (Kraken stablecoin CSVs, Python 3.14 wheels) | INV-16, INV-17 |
 
+## 4g. CHAT 14p1 - CURRENCY-GRAPH ENGINE CORE (261005): DECISIONS AND EVIDENCE
+
+Package `fx_trader/currency_graph/` (stdlib only; imports nothing from the repo, so 19p1's universe registry and chat 19's architecture cannot break it): `model.py` (Edge, CostSpec, EdgeType, orientation), `graph.py` (projections), `cycles.py` (enumeration, cycle basis, Bellman-Ford), `evaluate.py` (residual / executable gain / spread / verdict). Tests: `tests/test_currency_graph.py`.
+
+**Settled (user agreed 261005; do not relitigate without a new reason):**
+- **One edge list, three projections**, kept side by side so 14p4 can compare them on real data (deliverable: which projection(s) best serve estimation vs executability): `asset` (node = asset; drops VENUE edges), `asset_venue` (node = (asset, venue); crossing venues needs a VENUE edge), `per_venue` (one graph per venue). Edges keep their original index across projections.
+- **Edge types**: QUOTED (bid/ask), BASIS (unquoted equivalence, explicit `assumed` flag, `basis_bps` default 0 = alias, `weight` None = hard alias; upgrade to QUOTED if a venue quotes it - INV-16), VENUE (same asset, two venues). Every edge joins (base, venue) to (quote, venue_b or venue), so USDT on one venue can be linked to USD on another. USDT stays a separate asset from USD.
+- **Edge core now**: instrument, base, quote, venue, edge_type, bid, ask, spread_known, venue_b, ts_epoch, bar_convention ("open"), source, data_object, volume (INV-2), cost (CostSpec: taker_bps, maker_bps, fixed; None = unknown), assumed, weight, plus an open `meta` dict. Deferred to `meta` until their chat: staleness (14p3), tradeable (INV-18, chat 31), qc_flag (16p1), depth/latency (P12).
+- **Costs gate**: profitability is a core requirement. No fee is ever defaulted (verdict GAIN_COST_UNKNOWN). No profitability or arbitrage conclusion from the cartesian work is reportable until real costs are applied (chat 33). Data-validity work (residuals, strengths, attribution, INV-2/3/5) does not depend on fees. Account state 261005: OANDA practice/basic, Kraken basic/free, no paid feeds; package/source/subscription/profitability discussion scheduled as ROADMAP 29p2.
+- **Verdict precedence** (evaluate.py): VENUE_BLOCKED, UNRATED, NO_GAIN, GAIN_COST_UNKNOWN, EXECUTABLE_AFTER_COST, COST_EATS_GAIN. `preposition=True` is the caller's assertion that inventory exists on every venue in the cycle (VENUE legs then excluded from rating/cost).
+- **Cycles**: bounded simple-cycle enumeration (max_len <= 8, ceilings on cycle count and DFS steps; raises unless allow_truncate), fundamental cycle basis (E - N + C), Bellman-Ford detector (rated QUOTED arcs only by default; not exhaustive).
+- **Audit refactor (hybrid, agreed)**: 14p2 refactors `audit_sandbox_alignment.py` onto the engine. Gate: `tests/test_audit_sandbox_alignment` passes unchanged AND a new audit run's cycles/basis sections match `reports/audit_220101to260331_chat14_261005.json` to 1e-9 (user runs; keep that JSON as the golden file). If numbers differ: explain or reassess. Until then evaluate.py duplicates the audit's formulas and tier constants; a differential test pins them to each other.
+- **Strengths (14p3)**: unweighted and 1/spread-weighted least squares, leave-one-pair-out by exact refit (oracle) and hat-matrix identity e/(1-h) (fast path, cross-checked 1e-9; h = 1 = bridge pair such as USD_CAD, undefined), leave-one-currency-out; views zero-sum / vs USD / equal-weight basket / user-weighted basket / spread-weighted. Robust (Huber/IRLS) and numpy path in 14p4; rolling/Kalman deferred to chat 24.
+
+**Verified (label: run by Claude, Python 3.12.3 sandbox, `-W error`; user's 3.14.7 run NOT yet done):** 12 tests pass, incl. combinatorial ground truth (K4: 4 triangles, 7 cycles up to length 4; 8 pairs/6 currencies: 3 triangles, basis size 3; E - N + C with 2 components), injected k bps fault found at k bps (5, 50, 130.8), edge-order and pair-inversion invariance, differential agreement with the audit's triangle and basis-alias numbers over 7 random worlds at 1e-9 (against VERBATIM COPIES of 5 audit functions - the real module was not importable in Claude's sandbox), exact basis shift (7 bps), two-venue projection behaviour, Bellman-Ford. Test-the-test: breaking the cycle de-duplication rule made the cycle-count test fail.
+
+**Finding (MEASURED, synthetic world):** the arithmetic mid is not exactly inversion-symmetric (1/bid and 1/ask averaged differ from 1/mid by about half-spread squared, ~2.5e-5 bps at a 1 bp spread). Pair inversion therefore leaves |residual| unchanged only to second order in spread. Far too small to explain INV-5's 0.05-0.08 bps.
+
+**Not done / unknown:** nothing run on the real sandbox (14p2); numpy path (14p4); runtime of leave-one-out on ~26k bars x 16 instruments is unknown (measure in 14p3); VENUE-edge semantics inside a cycle may be refined by chat 18; INV-16 row counts/coverage still to be pasted by the user (find command in chat 14p1); Kraken CSV folders now live outside the repo layout (`Kraken_OHLCVT_Q#_YYYY` vs `kraken_csv/YYQ#`) - ingest naming to be reconciled in 16p1/25p1.
+
 ## 5. HOLZMANN REVIEW
 
 Applied project-wide. New files should be written to the same standard:
@@ -356,7 +379,7 @@ size, no bare `except: pass`.
 
 ## 7. IMMEDIATE NEXT STEP
 
-**Updated 261003 (chat 14): superseded by `ROADMAP.md` Section 4 (Status column). Chat 14 closed 261005. Next: 14p1 (currency-graph engine), 15, 16, 16p1, 17.**
+**Updated 261003 (chat 14): superseded by `ROADMAP.md` Section 4 (Status column). Chat 14 closed 261005. Chat 14p1 (engine core) built 261005; next: 14p2, 14p3, 14p4, 15, 16, 16p1, 17.**
 
 **Updated 260929: superseded by `ROADMAP.md` Sections 3-4 (phases and chat-by-chat plan). The paragraph below is the pre-260929 summary; its item (2), acquiring a second out-of-time window, is dropped (26Q2 unpublished, 22Q1-26Q1 is the final sandbox).**
 

@@ -1,4 +1,4 @@
-<!-- version: 261003 -->
+<!-- version: 261005 -->
 # Research Notes
 
 Read after `CONTEXT_HANDOFF.md` (esp. Section 4f) and `ROADMAP.md`. Purpose: keep what chat 14 learned from the literature, the web and the data so the cartesian chats (14p1, 17p1, 17p2, 18, 19) start with context instead of from scratch and do not re-litigate settled points. Built chat 14, 261003. Add new research as dated sections; fold resolved items into CONTEXT_HANDOFF as decision + evidence.
@@ -96,7 +96,7 @@ Causes of the residual tails and stress days are NOT yet established. "Evidence"
 | INV-2 | Are residual tails thin-bar effects? | Residuals cluster at 20-22 UTC; bars have `volume` (tick count) | Residual vs min-leg volume and bar range; sandbox-only | none | 14p1 |
 | INV-3 | Which clock anchors the hour concentration (20-22 UTC all triangles; GBP_JPY also 17 UTC)? | Hour profile | Split by UK-DST vs US-DST state: the hour that moves with US DST is NY-anchored | none | 14p1 |
 | INV-4 | Stress days: 2022-05-31 / 2022-06-01 (GBP_CHF, EUR_USD triangles); 2023-04-28, 2024-03-27, 2023-04-05 (GBP_JPY triangle); 2024-12-24 21:00 UTC (JPY 11.7 bps), 2025-04-13 21:00 UTC (JPY 10.9 bps, a Sunday open) | stress-day lists | Leg attribution (leave-one-out; GBP_USD is shared by all three triangles), then an external event calendar (central-bank dates, month-end fixings) | Event calendar | 14p1 + 17p1 |
-| INV-5 | Consistent sign: direct mid sits ~0.05-0.08 bps BELOW the synthetic mid in all three triangles | signed means +0.051 / +0.063 / +0.076 (synthetic minus direct) | Compare with the quantisation floor; regress on spread | none | 14p1 |
+| INV-5 | Consistent sign: direct mid sits ~0.05-0.08 bps BELOW the synthetic mid in all three triangles | signed means +0.051 / +0.063 / +0.076 (synthetic minus direct) | Compare with the quantisation floor; regress on spread. 14p1 note: arithmetic-mid asymmetry under pair inversion is ~half-spread^2 (~2.5e-5 bps at 1 bp spread, MEASURED on a synthetic world), far too small to explain it | none | 14p1 |
 | INV-6 | Why does the GBP_JPY triangle have heavier tails (90 suspect bars; executable-band violation in 0.89% of bars vs 0.04% and 0.01%)? | tier counts | Price precision, spreads, tick data | Ticks | 16p1 |
 | INV-7 | Basis tails: 2022-05-12 08-15 UTC (all four assets, BTC -234 bps), 2022-06-13 (LTC), 2022-04-06 (LTC), 2023-03-13 (XRP), 2023-03-24 11:00 (ETH, two hours before Binance's missing hour), 2025-04-07 (ETH -290 bps): USDT dislocation or Kraken thin/stale bars? | worst events | USDT/USD (Kraken), a third venue's USD pair, bar volumes | Stablecoin data | 25p1 / 16p1 |
 | INV-8 | Cost realism for thin survivors (LTC pairs; bid = ask bars hide spread) | Kraken base taker 0.40% vs model | Order-book snapshots, fee tiers | Exchange data | 30 / 33 |
@@ -107,8 +107,8 @@ Causes of the residual tails and stress days are NOT yet established. "Evidence"
 | INV-13 | Kraken-wide runs: ~2024-04-14 03:00 (5-6 h, all four), ~2025-11-01 15:00 (5-6 h), 2023-05-07 20:00, 2024-01-08 09-10 | venue summary | Kraken status history / Internet Archive | External | 16p1 |
 | INV-14 | Binance 2023-03-24 13:00 UTC missing hour (all four pairs) | catalogue | Binance announcements | External | 16p1 |
 | INV-15 | Weekend-proxy H1/H2 | none yet | Section 4 | alignment layer | 21p1 |
-| INV-16 | Do Kraken bulk CSVs include stablecoin pairs? | unknown | User checks | User | 25p1 |
-| INV-17 | psycopg2-binary / ccxt / requests / matplotlib wheels on Python 3.14 | numpy, coverage, hypothesis verified | `pip install --dry-run` each | User | any |
+| INV-16 | Do Kraken bulk CSVs include stablecoin pairs? | PARTLY ANSWERED 261005: the 23Q2 hourly file NAMES (user's directory listing, 654 files) include USDT vs USD/GBP/EUR/AUD/CAD/CHF/JPY, USDC, DAI, TUSD, EURT, UST pairs, and Kraken FX pairs (GBPUSD, EURUSD, EURGBP, USDJPY, USDCHF, USDCAD, AUDUSD...) - a possible second FX source for 16p1. Row counts, date coverage, `historical/` and other quarters NOT yet checked | User runs a `find` over the Kraken folders (path, row count, first/last epoch for USDTUSD, USDTGBP, GBPUSD) | User | 16p1 (basis edge QUOTED upgrade then 25p1) |
+| INV-17 | CLOSED 261005 (14p1): wheels on Python 3.14 | psycopg2 2.9.13, ccxt 4.5.78, requests 2.34.2, numpy 2.5.3, matplotlib 3.11.2 import and construct on 3.14.7 (psycopg2 never connected to a DB, ccxt never reached an exchange) | `pip install --dry-run` each | User | any |
 | INV-18 | OANDA pricing tradeable flag, stream heartbeat, financing fields | MEMORY only | Practice-account test | OANDA token | 31 |
 | INV-19 | LTC/GBP has 406 missing hours, 36% on weekends (BTC/GBP 86%): weekday illiquidity? | per-instrument summary | Volume, run structure | none | 16p1 |
 | INV-20 | Internet Archive coverage of broker/exchange notices | unknown | Try it | User/Claude | 16p1 |
