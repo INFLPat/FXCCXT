@@ -1,5 +1,5 @@
 <!-- root_readme (repo root: ~/FXCCXT/README.md) -->
-<!-- version: 261003 -->
+<!-- version: 261005 -->
 # FXCCXT
 
 Backtestable, cost-aware FX and crypto trading analysis pipeline: historical
@@ -67,7 +67,7 @@ Every file created or edited carries a `YYMMDD` version stamp; no stamp means le
 
 ### Next-chat handoff (standard, every session)
 
-Every session ends with: changed files by full repo path; a drafted opening message for the next one-topic chat; the exact files to attach to that chat (a long list means the scope is too big - split it); and what to apply, push and sync. One topic per chat, finished inside one 24-hour window.
+Every session ends with: changed files by full repo path; a drafted opening message for the next one-topic chat; the exact files to attach to that chat (a long list means the scope is too big - split it); and what to apply, push and sync. One topic per chat, finished inside one 24-hour window. Start every chat by running `python3 fx_trader/utilities/chat_preflight.py` and attaching `fx_trader/local/chat_start.txt` (gitignored; static machine facts live in `fx_trader/local/machine_profile.md`).
 
 ### README marker lines (standard, every README.md in this repo)
 

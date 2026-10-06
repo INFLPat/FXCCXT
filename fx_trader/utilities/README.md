@@ -1,5 +1,5 @@
 <!-- fx_trader_utilities_readme (fx_trader/utilities/README.md) -->
-<!-- version: 261003 -->
+<!-- version: 261005 -->
 # apply_patch.py - session handoff tool
 
 Applies a Claude session's file changes to this repo: creates new files,
@@ -70,6 +70,16 @@ in an Automator "Application" (New Document -> Application -> add a "Run
 Shell Script" action calling
 `python3 "$REPO_ROOT/fx_trader/utilities/apply_patch.py" "$1"` -> save as
 an app) - a few clicks, no code, ask if you want the exact steps.
+
+## Chat-start block: chat_preflight.py
+
+Run at the start of every chat, then attach (or paste) `fx_trader/local/chat_start.txt` with the opening message:
+
+```bash
+cd ~/FXCCXT && python3 fx_trader/utilities/chat_preflight.py            # add --no-manifest to skip the sandbox hash check
+```
+
+It combines a STATIC hand-edited profile (`fx_trader/local/machine_profile.md`: account tiers, local data paths, standing decisions; created from a template on first run, never overwritten) with DYNAMIC values (time, `git log -3`, status, HEAD vs origin/main, Python/OS, library versions, manifest verification). Everything under `fx_trader/local/` is gitignored, so nothing personal enters the public repo.
 
 ## Patch payload shape
 
