@@ -61,7 +61,7 @@ fx_trader/
 │   └── validation_orchestrator.py  # Tier 0-4 gate, wires the above together
 ├── currency_graph/                 # typed-edge currency graph engine (chat 14p1): model, 3 projections, cycles, evaluate; stdlib only
 ├── tests/                          # one test module per backtest/data/broker component
-├── utilities/                      # apply_patch.py + apply_patch.command (double-click launcher) - session-handoff tool, see utilities/README.md
+├── utilities/                      # apply_patch.py + apply_patch.command (double-click launcher) - session-handoff tool, plus chat_preflight.py (chat-start block); see utilities/README.md
 └── run_*.py                        # synthetic-data demos (the real-sandbox run_*.py scripts are listed above)
 ```
 
