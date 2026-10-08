@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 261005 -->
+<!-- version: 261008 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -25,6 +25,7 @@ fx_trader/
 ├── instrument_config.py            # shared 16-instrument universe, cost models, sizing constants
 ├── time_policy.py                 # time conventions: stored-timestamp contract, bound normalisation, display-only local time, NY-5pm FX session
 ├── audit_sandbox_alignment.py     # read-only sandbox audit: formats, gaps, cross-rate cycles, basis, timing, bars/year, manifest
+├── audit_gate.py                  # golden-file gate: compares audit reports (and a currency_graph-built cycles/basis report) with the golden JSON
 ├── requirements-dev.txt           # dev-only: coverage, hypothesis
 ├── run_monitor.py                  # run monitor: duration/metadata JSONL logs into logs/ (gitignored); see its docstring
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller

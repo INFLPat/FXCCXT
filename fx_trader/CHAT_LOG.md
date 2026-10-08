@@ -1,4 +1,4 @@
-<!-- version: 261005 -->
+<!-- version: 261008 -->
 # Chat Log
 
 Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forward-looking; finished work lives here. Add a row when a chat's last patch is applied. Date = the last day the chat was worked on / its final patch date (user convention, 261003). Titles marked (T) were supplied by the user; (R) were taken from ROADMAP.md because no title was supplied.
@@ -30,3 +30,4 @@ Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forw
 | patch_261005_chat14c.json | C14 | 1955222 | Close-out: audit run result, DONE status, commit hashes (commit 1955222) |
 | patch_261005_chat14p1.json | C14p1 | 0fbb0e6 | Code: currency_graph package + tests; docs; requirements.txt |
 | patch_261005_chat14p1b.json | C14p1 | 2d6e241 | chat_preflight.py + test, .gitignore, README notes (pushed 261005) |
+| patch_261005_chat14p1c.json | C14p1 | 79492de | Close-out: commit hashes, 3.14.7 test result, INV-16 in 16p1 row, README layout (hash recorded chat 14p2) |
