@@ -26,6 +26,7 @@ fx_trader/
 ├── time_policy.py                 # time conventions: stored-timestamp contract, bound normalisation, display-only local time, NY-5pm FX session
 ├── audit_sandbox_alignment.py     # read-only sandbox audit: formats, gaps, cross-rate cycles, basis, timing, bars/year, manifest
 ├── audit_gate.py                  # golden-file gate: compares audit reports (and a currency_graph-built cycles/basis report) with the golden JSON
+├── run_residual_investigations.py # INV-2/3/5: residual tails vs volume and bar range, DST anchoring of the hour effect, signed-mean bias test (read-only)
 ├── requirements-dev.txt           # dev-only: coverage, hypothesis
 ├── run_monitor.py                  # run monitor: duration/metadata JSONL logs into logs/ (gitignored); see its docstring
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
