@@ -31,3 +31,4 @@ Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forw
 | patch_261005_chat14p1.json | C14p1 | 0fbb0e6 | Code: currency_graph package + tests; docs; requirements.txt |
 | patch_261005_chat14p1b.json | C14p1 | 2d6e241 | chat_preflight.py + test, .gitignore, README notes (pushed 261005) |
 | patch_261005_chat14p1c.json | C14p1 | 79492de | Close-out: commit hashes, 3.14.7 test result, INV-16 in 16p1 row, README layout (hash recorded chat 14p2) |
+| patch_261008_chat14p2.json | C14p2 | 091ce13 | audit_gate.py + tests; INV-5 wording; 14p1c hash (pushed 261008) |
