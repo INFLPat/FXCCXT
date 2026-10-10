@@ -1,4 +1,4 @@
-# version: 261003
+# version: 261009
 """
 audit_sandbox_alignment.py  (fx_trader/audit_sandbox_alignment.py)
 
@@ -14,7 +14,11 @@ CHECKS (--checks, comma list, default all)
             crypto activity inside each gap; crypto missing hours by venue
   cycles    every FX triangle ENUMERATED from the instrument list (USD is not
             special): mid residual (bps), residual / summed leg spread, and
-            the EXECUTABLE no-arbitrage test (bid/ask per direction)
+            the EXECUTABLE no-arbitrage test (bid/ask per direction). Since
+            chat 14p2 discovery and the per-bar numbers come from
+            currency_graph, in a CANONICAL orientation/order that reproduces
+            the pre-refactor report exactly (tests/oracle_audit_261003.py is
+            the frozen independent copy of the old logic)
   basis     crypto basis cycles X/USDT -> X/GBP -> GBP_USD (USDT~USD alias)
   lag       Binance-vs-Kraken return correlation at lags; FX-vs-crypto timing
             (loading of the basis change on GBP_USD returns; ~0 = aligned)
@@ -41,7 +45,6 @@ Standard library only; adopts run_monitor.
 import argparse
 import bisect
 import hashlib
-import itertools
 import json
 import math
 import re
@@ -53,6 +56,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from currency_graph import EdgeType, basis_edge, enumerate_cycles, evaluate_quotes, quoted_edge
+from currency_graph.evaluate import ABS_SUSPECT_BPS, RATIO_CLEAN, RATIO_SUSPECT, bar_tier
 from instrument_config import INSTRUMENTS
 from run_monitor import LONDON, count, item, monitored_run, note
 from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
@@ -62,13 +67,10 @@ HOUR = 3600
 YEAR_SECONDS = 365.25 * 86400
 MAX_ROWS = 10_000_000
 MAX_EVENTS = 5_000
-MAX_CYCLES = 5_000
+CYCLE_MAX_LEN = 4           # longest cycle enumerated (basis cycles have four legs)
 CHECKS = ("format", "gaps", "cycles", "basis", "lag", "ppy", "manifest")
 QUOTE_TO_VENUE = {"USDT": "binance", "GBP": "kraken"}   # assumption: quote currency identifies the venue
 USD_PROXY = {"USDT": "USD"}                               # alias edge: USDT treated as USD (basis measured, not assumed)
-RATIO_CLEAN = 0.25          # |residual| / summed leg spread: provisional tier edges (chat 14)
-RATIO_SUSPECT = 1.0
-ABS_SUSPECT_BPS = 10.0
 PPY_WARN_FRACTION = 0.01
 LAG_RANGE = (-2, -1, 0, 1, 2)
 LOADING_LAGS = (-1, 0, 1)
@@ -283,50 +285,107 @@ def crypto_gap_report(crypto_series: dict, display_tz: str) -> dict:
 
 
 # ---------------------------------------------------------------- cycles
-def edge_spec(instrument: str, from_ccy: str) -> tuple:
-    """(instrument, +1 if traversed base->quote else -1) when leaving from_ccy."""
-    base, quote = split_pair(instrument)
-    assert from_ccy in (base, quote), f"{from_ccy} is not in {instrument}"
-    return (instrument, 1 if from_ccy == base else -1)
-
-
-def enumerate_triangles(fx_names: list) -> list:
-    """Every 3-currency cycle whose three pairs all exist - discovered from the
-    instrument list, not hard-coded (USD is not special)."""
-    assert fx_names, "no FX instruments"
-    pair_of = {frozenset(split_pair(n)): n for n in fx_names}
-    assert len(pair_of) == len(fx_names), "duplicate currency pair in instrument list"
-    ccys = sorted({c for n in fx_names for c in split_pair(n)})
-    cycles = []
-    for a, b, c in itertools.combinations(ccys, 3):
-        edges = [(a, b), (b, c), (c, a)]
-        if all(frozenset(e) in pair_of for e in edges):
-            cycles.append(tuple(edge_spec(pair_of[frozenset(e)], e[0]) for e in edges))
-        assert len(cycles) <= MAX_CYCLES, "cycle ceiling exceeded"
-    return cycles
-
-
-def basis_specs_for_base(base: str, quotes: dict, pair_of: dict) -> dict:
-    assert quotes, "no quotes for base"
-    specs = {}
-    for (q_proxy, usd), q_other in itertools.product(USD_PROXY.items(), sorted(quotes)):
-        fx = pair_of.get(frozenset((usd, q_other)))
-        if q_proxy in quotes and q_other != q_proxy and fx:
-            specs[f"{base} via {q_proxy}/{q_other}"] = (
-                (quotes[q_proxy], -1), (quotes[q_other], 1), edge_spec(fx, q_other))
-    return specs
-
-
-def basis_specs(crypto_names: list, fx_names: list) -> dict:
-    pair_of = {frozenset(split_pair(n)): n for n in fx_names}
-    by_base = defaultdict(dict)
+def build_topology(fx_names: list, crypto_names: list) -> list:
+    """Edge list with placeholder quotes (topology only): FX on 'oanda', crypto
+    on its quote currency's venue, plus the USDT~USD alias edge when a crypto
+    pair is quoted in the proxy currency."""
+    assert fx_names or crypto_names, "no instruments"
+    edges = [quoted_edge(n, "oanda", 1.0, 1.0, spread_known=True) for n in fx_names]
+    quotes = set()
     for n in crypto_names:
-        base, quote = split_pair(n)
-        by_base[base][quote] = n
-    specs = {}
-    for base, quotes in sorted(by_base.items()):
-        specs.update(basis_specs_for_base(base, quotes, pair_of))
-    return specs
+        quote = split_pair(n)[1]
+        quotes.add(quote)
+        edges.append(quoted_edge(n, QUOTE_TO_VENUE.get(quote, "other"), 1.0, 1.0, spread_known=False))
+    for proxy, usd in sorted(USD_PROXY.items()):
+        if proxy in quotes:
+            edges.append(basis_edge(proxy, usd, QUOTE_TO_VENUE.get(proxy, "other"), venue_b="oanda"))
+    return edges
+
+
+def classify_cycle(edges: list, cycle: tuple) -> str:
+    """'basis' (contains the alias edge), 'triangle' (three FX legs),
+    'crypto_only' (no alias, some crypto leg) or 'fx_other'."""
+    assert cycle, "empty cycle"
+    legs = [edges[i] for i, _d in cycle]
+    if any(e.edge_type is EdgeType.BASIS for e in legs):
+        return "basis"
+    n_crypto = sum(1 for e in legs if is_crypto(e.instrument))
+    if n_crypto == 0 and len(legs) == 3:
+        return "triangle"
+    return "crypto_only" if n_crypto else "fx_other"
+
+
+def oriented_spec(edges: list, cycle: tuple, path: list) -> tuple:
+    """((instrument, d), ...) for the QUOTED legs of `cycle`, walked along the
+    asset `path` (closing back to path[0]); d = +1 when a leg is walked
+    base -> quote. The alias hop, if any, contributes nothing (rate exactly 1)."""
+    assert len(path) >= 3, "a cycle needs at least three assets"
+    remaining = [i for i, _d in cycle]
+    spec = []
+    for x, y in zip(path, path[1:] + path[:1]):
+        hit = next((i for i in remaining if {edges[i].base, edges[i].quote} == {x, y}), None)
+        if hit is None:
+            raise ValueError(f"no leg joins {x} and {y}")
+        remaining.remove(hit)
+        if edges[hit].edge_type is EdgeType.QUOTED:
+            spec.append((edges[hit].instrument, 1 if edges[hit].base == x else -1))
+    assert not remaining, "path did not use every leg of the cycle"
+    return tuple(spec)
+
+
+def _basis_path(edges: list, cycle: tuple) -> list | None:
+    """[proxy, base, other, usd] for the shape USDT -> X -> Q -> USD -> USDT, else None."""
+    legs = [edges[i] for i, _d in cycle]
+    alias = [e for e in legs if e.edge_type is EdgeType.BASIS]
+    crypto = [e for e in legs if e.edge_type is EdgeType.QUOTED and is_crypto(e.instrument)]
+    fx = [e for e in legs if e.edge_type is EdgeType.QUOTED and not is_crypto(e.instrument)]
+    if len(legs) != 4 or len(alias) != 1 or len(crypto) != 2 or len(fx) != 1:
+        return None
+    proxy, usd = alias[0].base, alias[0].quote
+    if crypto[0].base != crypto[1].base:
+        return None
+    others = {e.quote for e in crypto} - {proxy}
+    if len(others) != 1 or proxy not in {e.quote for e in crypto}:
+        return None
+    other = next(iter(others))
+    if {fx[0].base, fx[0].quote} != {other, usd}:
+        return None
+    return [proxy, crypto[0].base, other, usd]
+
+
+def discover_cycles(fx_names: list, crypto_names: list, max_len: int = CYCLE_MAX_LEN) -> dict:
+    """Cycles found by currency_graph, in the audit's canonical orientation and
+    order. Returns {'triangle': [(label, spec)], 'basis': [...], 'crypto_only': [...],
+    'fx_other': count, 'truncated': bool}. Triangles walk the sorted currencies
+    a -> b -> c -> a and are ordered by that triple; basis cycles walk
+    USDT -> X -> Q -> USD and are ordered by (base, proxy, other); crypto-only
+    cycles keep the engine's orientation (diagnostic, not part of any report)."""
+    edges = build_topology(fx_names, crypto_names)
+    cset = enumerate_cycles(edges, "asset", max_len=max_len)
+    assert not cset.truncated, "cycle enumeration truncated"
+    keyed = {"triangle": [], "basis": [], "crypto_only": []}
+    fx_other = 0
+    for cyc in cset.cycles:
+        kind = classify_cycle(edges, cyc)
+        nodes = sorted({a for i, _d in cyc for a in (edges[i].base, edges[i].quote)})
+        if kind == "triangle":
+            spec = oriented_spec(edges, cyc, nodes)
+            keyed["triangle"].append((tuple(nodes), cycle_label(spec), spec))
+        elif kind == "basis":
+            path = _basis_path(edges, cyc)
+            if path is not None:
+                spec = oriented_spec(edges, cyc, path)
+                keyed["basis"].append(((path[1], path[0], path[2]), f"{path[1]} via {path[0]}/{path[2]}: {cycle_label(spec)}", spec))
+            else:
+                spec = tuple((edges[i].instrument, d) for i, d in cyc if edges[i].edge_type is EdgeType.QUOTED)
+                keyed["basis"].append((("~",) + tuple(nodes), f"basis: {cycle_label(spec)}", spec))
+        elif kind == "crypto_only":
+            spec = tuple((edges[i].instrument, d) for i, d in cyc)
+            keyed["crypto_only"].append((tuple(sorted(n for n, _d in spec)), cycle_label(spec), spec))
+        else:
+            fx_other += 1
+    out = {kind: [(label, spec) for _k, label, spec in sorted(rows, key=lambda r: r[0])] for kind, rows in keyed.items()}
+    return out | {"fx_other": fx_other, "truncated": cset.truncated}
 
 
 def cycle_label(spec: tuple) -> str:
@@ -334,36 +393,23 @@ def cycle_label(spec: tuple) -> str:
     return " ".join(f"{'+' if d > 0 else '-'}{n}" for n, d in spec)
 
 
-def evaluate_cycle(spec: tuple, series_by_name: dict) -> dict:
-    """Per common bar, in bps: mid residual (sum of signed log mids), executable
-    gain going each way round the loop (sell base at bid / buy base at ask),
-    and the summed leg spread."""
+def evaluate_spec(spec: tuple, series_by_name: dict) -> dict:
+    """Per common bar, in bps (currency_graph.evaluate_quotes): mid residual
+    (sum of signed log mids), executable gain going each way round the loop
+    (sell base at bid / buy base at ask), and the summed leg spread."""
     assert spec and all(len(e) == 2 for e in spec), "bad cycle spec"
-    common = sorted(set.intersection(*(set(series_by_name[n]) for n, _ in spec)))
+    legs_series = [series_by_name[n] for n, _d in spec]
+    dirs = [d for _n, d in spec]
+    common = sorted(set.intersection(*(set(s) for s in legs_series)))
+    assert len(common) <= MAX_ROWS, "row ceiling exceeded"
     ev = {"stamps": common, "resid": [], "gain_fwd": [], "gain_rev": [], "spread": []}
     for t in common:
-        r = f = g = s = 0.0
-        for name, d in spec:
-            bid, ask = series_by_name[name][t]
-            r += d * math.log((bid + ask) / 2)
-            f += math.log(bid) if d > 0 else -math.log(ask)
-            g += math.log(bid) if d < 0 else -math.log(ask)
-            s += math.log(ask) - math.log(bid)
-        for key, val in (("resid", r), ("gain_fwd", f), ("gain_rev", g), ("spread", s)):
-            ev[key].append(val * 1e4)
+        resid, fwd, rev, spread = evaluate_quotes([(s[t][0], s[t][1], d) for s, d in zip(legs_series, dirs)])
+        ev["resid"].append(resid)
+        ev["gain_fwd"].append(fwd)
+        ev["gain_rev"].append(rev)
+        ev["spread"].append(spread)
     return ev
-
-
-def bar_tier(abs_bps: float, spread_bps: float) -> str:
-    assert abs_bps >= 0, "abs_bps must be non-negative"
-    if abs_bps > ABS_SUSPECT_BPS:
-        return "suspect"
-    if spread_bps <= 0:
-        return "unrated"
-    ratio = abs_bps / spread_bps
-    if ratio <= RATIO_CLEAN:
-        return "clean"
-    return "noisy" if ratio <= RATIO_SUSPECT else "suspect"
 
 
 def group_pcts(keys: list, values: list, points=(50, 99)) -> dict:
@@ -414,15 +460,15 @@ def summarize_cycle(label: str, ev: dict, display_tz: str, rated: bool = True) -
 
 
 def cycles_report(fx_names: list, series_by_name: dict, display_tz: str) -> dict:
-    specs = enumerate_triangles(fx_names)
-    return {"n_cycles": len(specs),
-            "cycles": [summarize_cycle(cycle_label(s), evaluate_cycle(s, series_by_name), display_tz) for s in specs]}
+    triangles = discover_cycles(fx_names, [], max_len=3)["triangle"]
+    return {"n_cycles": len(triangles),
+            "cycles": [summarize_cycle(label, evaluate_spec(spec, series_by_name), display_tz) for label, spec in triangles]}
 
 
 def basis_report(crypto_names: list, fx_names: list, series_by_name: dict, display_tz: str) -> dict:
-    specs = basis_specs(crypto_names, fx_names)
-    return {"n_cycles": len(specs),
-            "cycles": [summarize_cycle(f"{k}: {cycle_label(s)}", evaluate_cycle(s, series_by_name), display_tz, rated=False) for k, s in specs.items()]}
+    basis = discover_cycles(fx_names, crypto_names)["basis"]
+    return {"n_cycles": len(basis),
+            "cycles": [summarize_cycle(label, evaluate_spec(spec, series_by_name), display_tz, rated=False) for label, spec in basis]}
 
 
 # ------------------------------------------------------------------- lag

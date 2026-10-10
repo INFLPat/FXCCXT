@@ -1,4 +1,4 @@
-# version: 261008
+# version: 261009
 """
 audit_gate.py  (fx_trader/audit_gate.py)
 
@@ -12,10 +12,12 @@ TWO MODES (either or both; each is one comparison in the output):
                           should show zero differences, and it validates this
                           comparer before it judges the engine).
   --engine                builds the `cycles` and `basis` sections from the
-                          sandbox DB with currency_graph (cycle discovery,
-                          evaluate_quotes) and the audit's OWN summarize_cycle,
-                          then compares just those two sections with the golden.
-                          The audit file is not modified.
+                          sandbox DB with the audit's own cycles_report /
+                          basis_report (which, since chat 14p2, run on
+                          currency_graph), then compares just those two
+                          sections with the golden. Also lists the engine's
+                          enumeration counts and the crypto-only 4-cycles
+                          (information only, not gated).
 
 COMPARISON RULES
 - Cycles are matched by their SET of instruments (alias leg and the
@@ -36,8 +38,9 @@ EXIT CODE: 0 = every comparison PASS; 3 = no FAIL but at least one FLIP;
 2 = at least one FAIL.
 
 NOT covered: the engine path reuses the audit's series loader and summariser,
-so those are tested only by being the golden's own code. A pass says the engine's
-cycles and per-bar numbers reproduce the audit's, nothing more.
+so those are tested only by being the golden's own code. A pass says the
+audit's cycles and basis sections still reproduce the golden, nothing more.
+(The pre-refactor logic is frozen in tests/oracle_audit_261003.py.)
 
 Run (from fx_trader/):
   python3 audit_gate.py --chat 14 --tag p2 --golden reports/audit_220101to260331_chat14_261005.json --engine
@@ -56,7 +59,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import audit_sandbox_alignment as au
-from currency_graph import EdgeType, basis_edge, enumerate_cycles, evaluate_quotes, quoted_edge
 from run_monitor import LONDON, count, item, monitored_run, note
 from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
 from time_policy import local_view
@@ -71,7 +73,6 @@ ENGINE_SECTIONS = CYCLE_SECTIONS
 SHARE_FIELDS = ("share_ratio_gt_clean", "share_ratio_gt_suspect", "exec_violation_share")
 IGNORED_PATHS = frozenset({("chat",), ("sandbox_db",), ("checks",), ("manifest", "written_to"), ("manifest", "verified_against")})
 LEG_RE = re.compile(r"^([+-])(\S+)$")
-ENGINE_MAX_LEN = 4
 
 
 @dataclass
@@ -318,69 +319,10 @@ def compare_reports(golden: dict, fresh: dict, sections=None, ignored=IGNORED_PA
 
 
 # --------------------------------------------------------- engine report
-def build_topology(fx_names: list, crypto_names: list) -> list:
-    """Edge list with placeholder quotes (topology only): FX on 'oanda',
-    crypto on its quote currency's venue, plus the USDT~USD alias edge."""
-    assert fx_names or crypto_names, "no instruments"
-    edges = [quoted_edge(n, "oanda", 1.0, 1.0, spread_known=True) for n in fx_names]
-    quotes = set()
-    for n in crypto_names:
-        quote = au.split_pair(n)[1]
-        quotes.add(quote)
-        edges.append(quoted_edge(n, au.QUOTE_TO_VENUE.get(quote, "other"), 1.0, 1.0, spread_known=False))
-    for proxy, usd in sorted(au.USD_PROXY.items()):
-        if proxy in quotes:
-            edges.append(basis_edge(proxy, usd, au.QUOTE_TO_VENUE.get(proxy, "other"), venue_b="oanda"))
-    return edges
-
-
-def classify_cycle(edges: list, cycle: tuple) -> str:
-    assert cycle, "empty cycle"
-    legs = [edges[i] for i, _d in cycle]
-    if any(e.edge_type is EdgeType.BASIS for e in legs):
-        return "basis"
-    n_crypto = sum(1 for e in legs if au.is_crypto(e.instrument))
-    if n_crypto == 0 and len(legs) == 3:
-        return "triangle"
-    return "crypto_only" if n_crypto else "fx_other"
-
-
-def _spec_and_dirs(edges: list, cycle: tuple) -> tuple:
-    """(name, d) pairs for the series legs only (the alias contributes exactly 0)."""
-    spec = tuple((edges[i].instrument, d) for i, d in cycle if edges[i].edge_type is EdgeType.QUOTED)
-    assert spec, "cycle has no quoted legs"
-    return spec
-
-
-def _evaluate(spec: tuple, series: dict) -> dict:
-    legs_series = [series[name] for name, _d in spec]
-    dirs = [d for _n, d in spec]
-    common = sorted(set.intersection(*(set(s) for s in legs_series)))
-    assert len(common) <= au.MAX_ROWS, "row ceiling exceeded"
-    ev = {"stamps": common, "resid": [], "gain_fwd": [], "gain_rev": [], "spread": []}
-    for t in common:
-        resid, fwd, rev, spread = evaluate_quotes([(s[t][0], s[t][1], d) for s, d in zip(legs_series, dirs)])
-        ev["resid"].append(resid)
-        ev["gain_fwd"].append(fwd)
-        ev["gain_rev"].append(rev)
-        ev["spread"].append(spread)
-    return ev
-
-
-def _basis_label(spec: tuple) -> str:
-    """'BTC via USDT/GBP: ...' - same wording as the audit; instrument-set matching makes it informational."""
-    body = au.cycle_label(spec)
-    crypto = [n for n, _d in spec if au.is_crypto(n)]
-    base = au.split_pair(crypto[0])[0]
-    quotes = [au.split_pair(n)[1] for n in crypto]
-    proxy = next((q for q in quotes if q in au.USD_PROXY), None)
-    other = next((q for q in quotes if q != proxy), None)
-    return f"{base} via {proxy}/{other}: {body}" if proxy and other else body
-
-
 def build_engine_report(sandbox_path: str, instruments: list, display_tz: str, hooks: dict | None = None) -> tuple:
-    """(report, extra). report has only `cycles` and `basis`, shaped like the
-    audit's; extra = enumeration counts and the crypto-only 4-cycles (info)."""
+    """(report, extra). report has only `cycles` and `basis`, built by the
+    audit's own functions; extra = enumeration counts and the crypto-only
+    4-cycles (information only)."""
     assert Path(sandbox_path).exists(), f"sandbox not found: {sandbox_path}"
     assert display_tz, "display tz required"
     hooks = hooks or {}
@@ -392,33 +334,20 @@ def build_engine_report(sandbox_path: str, instruments: list, display_tz: str, h
     series = {n: s for n, s in series.items() if s}
     fx = sorted(n for n in series if not au.is_crypto(n))
     crypto = sorted(n for n in series if au.is_crypto(n))
-    edges = build_topology(fx, crypto)
-    cset = enumerate_cycles(edges, "asset", max_len=ENGINE_MAX_LEN)
-    assert not cset.truncated, "cycle enumeration truncated"
-    groups = {"triangle": [], "basis": [], "crypto_only": [], "fx_other": []}
-    for cyc in cset.cycles:
-        groups[classify_cycle(edges, cyc)].append(cyc)
-
-    def run(kind: str, rated: bool, labeller) -> list:
-        out = []
-        for cyc in sorted(groups[kind], key=lambda c: sorted(n for n, _d in _spec_and_dirs(edges, c))):
-            t0 = time.perf_counter()
-            spec = _spec_and_dirs(edges, cyc)
-            label = labeller(spec)
-            out.append((label, au.summarize_cycle(label, _evaluate(spec, series), display_tz, rated=rated), spec))
-            if hooks.get("item"):
-                hooks["item"](f"engine/{kind}/{label}", time.perf_counter() - t0)
-        return out
-
-    tri = run("triangle", True, au.cycle_label)
-    bas = run("basis", False, _basis_label)
-    cry = run("crypto_only", False, au.cycle_label)
-    report = {"cycles": {"n_cycles": len(tri), "cycles": [s for _l, s, _p in tri]},
-              "basis": {"n_cycles": len(bas), "cycles": [s for _l, s, _p in bas]}}
-    extra = {"enumeration": {k: len(v) for k, v in groups.items()} | {"truncated": cset.truncated},
-             "crypto_only_info": [
-                 {"cycle": label, "n": s["n"], "abs_bps_p99": s["abs_bps"]["99"], "abs_bps_max": s["abs_bps"]["100"]}
-                 for label, s, _p in cry if s["n"]]}
+    t0 = time.perf_counter()
+    report = {"cycles": au.cycles_report(fx, series, display_tz), "basis": au.basis_report(crypto, fx, series, display_tz)}
+    found = au.discover_cycles(fx, crypto)
+    info = []
+    for label, spec in found["crypto_only"]:
+        s = au.summarize_cycle(label, au.evaluate_spec(spec, series), display_tz, rated=False)
+        if s["n"]:
+            info.append({"cycle": label, "n": s["n"], "abs_bps_p99": s["abs_bps"]["99"], "abs_bps_max": s["abs_bps"]["100"]})
+    if hooks.get("item"):
+        hooks["item"]("engine/cycles+basis+crypto_only", time.perf_counter() - t0)
+    extra = {"enumeration": {"triangle": len(found["triangle"]), "basis": len(found["basis"]),
+                             "crypto_only": len(found["crypto_only"]), "fx_other": found["fx_other"],
+                             "truncated": found["truncated"]},
+             "crypto_only_info": info}
     return report, extra
 
 

@@ -1,4 +1,4 @@
-# version: 261008
+# version: 261009
 """
 run_residual_investigations.py  (fx_trader/run_residual_investigations.py)
 
@@ -70,7 +70,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import audit_sandbox_alignment as au
-from audit_gate import build_topology
 from currency_graph import enumerate_cycles, evaluate_quotes
 from run_monitor import LONDON, count, item, monitored_run, note
 from sandbox_config import GLOBAL_START, discover_sandbox_end, sandbox_db_path
@@ -135,7 +134,7 @@ def derive_leg_rows(bars: dict) -> dict:
 def triangle_specs(fx_names: list) -> list:
     """[(label, spec)] with spec = ((instrument, d), ...), from currency_graph, sorted by instrument set."""
     assert fx_names, "no FX instruments"
-    edges = build_topology(sorted(fx_names), [])
+    edges = au.build_topology(sorted(fx_names), [])
     cycles = enumerate_cycles(edges, "asset", max_len=3).cycles
     specs = [tuple((edges[i].instrument, d) for i, d in cyc) for cyc in cycles if len(cyc) == 3]
     specs.sort(key=lambda s: sorted(n for n, _d in s))

@@ -1,4 +1,4 @@
-# version: 261005
+# version: 261009
 """
 tests/test_currency_graph.py
 
@@ -17,7 +17,7 @@ Run: python3 -m tests.test_currency_graph
 import math
 import random
 
-import audit_sandbox_alignment as au
+from tests import oracle_audit_261003 as au  # frozen pre-refactor audit logic (independent oracle)
 from currency_graph import (
     CostSpec, CycleCeilingError, EdgeType, basis_edge, bar_tier, canonicalise, check_closed, cycle_basis,
     cycle_legs, cycle_signature, enumerate_cycles, evaluate_cycle, evaluate_quotes, find_arbitrage_cycles,
