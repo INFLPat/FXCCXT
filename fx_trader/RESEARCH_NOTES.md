@@ -118,3 +118,21 @@ Causes of the residual tails and stress days are NOT yet established. "Evidence"
 ## 11. Coverage ledger (chat 14)
 
 See the end of `CONTEXT_HANDOFF.md` Section 4f ("Chat 14 coverage ledger") - maintained there so it travels with the decisions.
+
+## 12. Data caveats register (added chat 14p2, 261009)
+
+Purpose: every analysis that uses survivors or cross-rate results cites this table, so no chat has to rederive what an open data question touches. Labels: MEASURED / READ / INFERRED. "Touches" = results that could be affected; "Not touched" = results the item cannot affect by construction or by evidence. An INFERRED entry is a reasoned scope, not a measured effect. Survivor groups (CONTEXT_HANDOFF 4d, 17 persisted survivors): GBP_JPY 6 (RSI 4, Confluence 2), USD_JPY 3 (RSI), LTC/GBP 3 (RSI 2, Confluence 1), LTC/USDT 5 (Confluence 3, RSI 2).
+
+| Item | Evidence | Touches | Not touched | Closes in |
+|---|---|---|---|---|
+| INV-1: bad bars 2022-05-04 (USD_CHF frozen closes) and 2022-05-08 (EUR_GBP Sunday open) | MEASURED (audit); cause unknown | Triangles containing those legs; any cartesian result over those windows | All 17 survivors (instruments GBP_JPY, USD_JPY, LTC/GBP, LTC/USDT carry neither pair) - READ | 16p1 |
+| INV-5 / INV-21: signed cycle mean nonzero, +0.063 / +0.051 / -0.076 bps | MEASURED (14p2c); cause unknown | Centring of residual-dynamics benchmarks (chat 24: estimate the centre, do not assume 0); strength estimates if offsets are treated as exact | Tier gates, tiers, all single-instrument strategies and survivors (size <0.1 bps vs 4-5 bps summed spread: INFERRED) | 14p4 or later |
+| INV-3 / INV-22: residual hour effect is New-York-anchored (21/22 UTC, 13/14 UTC) | MEASURED (14p2c); three triangles share GBP_USD; not yet spread-normalised | Any hour-of-day treatment of residuals; cross-rate signals near those hours | Single-instrument survivors (not shown to depend on cross-rate residuals: INFERRED) | 14p4 (INV-22), 16p1 / 25p1 (independent pairs) |
+| INV-2: no bulk thin-bar or range effect; extreme bars of the GBP_CHF and EUR triangles sit in the lowest volume decile | MEASURED (14p2c) | Whether to mask thin bars in GBP_CHF / EUR triangle work | GBP_JPY-triangle tails (90 suspect bars spread over all volume deciles) | 16p1 |
+| INV-6: JPY triangle heavy tails (90 suspect bars, 0.89% executable-band violations) | MEASURED; cause unknown (thin bars ruled out by INV-2) | Cross-rate work using JPY legs; whether JPY single-instrument results share the cause is UNKNOWN | - | 16p1 (ticks) |
+| INV-19 / INV-7: LTC/GBP has 406 missing hours; largest basis tails (all four assets) | MEASURED; cause unknown | LTC/GBP survivors (3); basis and crypto-only cycles | JPY survivors | 16p1, 25p1 |
+| INV-8: crypto bars have bid = ask; model cost 0.15% per side vs Kraken base taker 0.40% | READ (RESEARCH_NOTES INV-8, ROADMAP risk register) | All 8 crypto survivors (LTC/GBP, LTC/USDT): edge may shrink or vanish with real fees | The 9 JPY survivors (FX cost model) | 30, 33 |
+| MC-1: FX_PPY 6,048 vs observed 6,224 bars per year | MEASURED (4f.7) | Sharpe, Sortino, Calmar, rolling and portfolio Sharpe for FX instruments (~1.4%) | All Tier 0-4 gates, bootstrap CIs, the other base-metric candidates | 28 |
+| AR-2: fills at the signal bar's close (optimistic) | READ (engine; risk register) | Every backtest, mean-reversion most (INFERRED) | - | 33 (sensitivity) |
+| Single source (OANDA FX; Binance, Kraken crypto) | READ | Everything | - | 16p1, 30p1 |
+| Thin survivor margins: GBP_JPY CI-90 lower bounds +0.14% and +0.13% (one 2025 H2 window) | READ (4d) | The 6 GBP_JPY survivors | LTC survivors' margins (+0.7% to +5.6%) are larger but also single-window | 16, 27 |

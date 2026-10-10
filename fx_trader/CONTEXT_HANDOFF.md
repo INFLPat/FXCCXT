@@ -352,6 +352,8 @@ size, no bare `except: pass`.
 
 ## 6. OPEN THREADS
 
+- **Data caveats register** (what each open data question touches, and what it does not): `RESEARCH_NOTES.md` Section 12. Cite it before interpreting any survivor or cross-rate result.
+
 - Hosting: the live runner needs an always-on host, distinct from the database host (Snowflake Postgres/Neon). User recalls a Vultr vs Neon discussion in another chat that is not in the repo - capture it in chat 30.
 - Post-MVP, with a lawyer and an accountant: compliance work they specify; ISA/tax-wrapper investigation (individual-vs-company and eligible-holdings questions flagged in `ROADMAP.md` Section 5).
 - Investor pack (process explainer, flow chart, market/competitor comparison) runs in parallel; a lawyer reviews return language before external use.
