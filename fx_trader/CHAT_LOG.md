@@ -1,4 +1,4 @@
-<!-- version: 261009 -->
+<!-- version: 261010 -->
 # Chat Log
 
 Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forward-looking; finished work lives here. Add a row when a chat's last patch is applied. Date = the last day the chat was worked on / its final patch date (user convention, 261003). Titles marked (T) were supplied by the user; (R) were taken from ROADMAP.md because no title was supplied.
@@ -20,6 +20,7 @@ Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forw
 | C13 | 261001 | Reproduce the 7 survivors on 2025 H2; CLI-args conventions (R) | Same 7 pairs / 17 survivors reproduced; `run_full_sweep.py` argparse; patches 261001_chat13 to 13d (CONTEXT_HANDOFF 4d) |
 | C14 | 261005 | Cross-rate arithmetic, timestamp-alignment and timezone audit (ROADMAP 4) | DONE (261005). Payload 1 (code) `patch_261003_chat14.json` applied + pushed, commit 8dd6c71. Payload 2 (docs) `patch_261003_chat14b.json`, commit 3a2fc4b. Close-out `patch_261005_chat14c.json`: audit `main()` run on the user's machine (ok, 3.9 s), manifest verified, figures reproduced. Findings and decisions: CONTEXT_HANDOFF 4f; research: RESEARCH_NOTES.md |
 | C14p1 | 261005 | Currency-graph engine core (S2a) (R) | DONE 261005 (commits 0fbb0e6, 2d6e241; all 28 test modules PASS on 3.14.7). Package currency_graph (model, graph projections, cycles, evaluate), 12 tests, preflight tool, docs; INV-17 closed, INV-16 partly answered. Remaining S2 scope split into 14p2-14p4 (ROADMAP). CONTEXT_HANDOFF 4g |
+| C14p2 | 261010 | Audit refactor onto currency_graph with golden gate; INV-2/3/5 (R) | DONE 261010. audit_gate.py (golden comparer + engine mode): both comparisons PASS, 0 differences, 0 INFO after the refactor. Audit now delegates cycle discovery and per-bar numbers to currency_graph with canonical orientation (tests/oracle_audit_261003.py frozen oracle, equivalence tests). INV-2: no bulk thin-bar/range effect (extremes of GBP_CHF/EUR triangles sit in the lowest volume decile); INV-3: hour effect New-York-anchored; INV-5: nonzero but tiny (<0.1 bps), cause open (INV-21); INV-22 opened. Data caveats register: RESEARCH_NOTES Section 12 |
 
 ## Patch and commit record
 
@@ -34,3 +35,7 @@ Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forw
 | patch_261008_chat14p2.json | C14p2 | 091ce13 | audit_gate.py + tests; INV-5 wording; 14p1c hash (pushed 261008) |
 | patch_261008_chat14p2b.json | C14p2 | 3e49d3f | Gate PASS recorded; append-only run-log convention; 14p2 patch hash (pushed 261009) |
 | patch_261008_chat14p2c.json | C14p2 | 4d3b79c | run_residual_investigations.py + tests (INV-2/3/5), README layout line (pushed 261009) |
+| patch_261009_chat14p2d.json | C14p2 | 8e1e58d | INV-2/3/5 results recorded; INV-5 corrected (nonzero but tiny); INV-21/22; patch hashes |
+| patch_261009_chat14p2e.json | C14p2 | 0d302bc | Data caveats register (RESEARCH_NOTES Section 12) + pointer |
+| patch_261009_chat14p2f.json | C14p2 | e8f79e2 | Audit onto currency_graph (canonical orientation), frozen oracle, equivalence tests |
+| patch_261010_chat14p2g.json | C14p2 | (record at next chat) | Close-out: gate PASS recorded, ROADMAP/CHAT_LOG/CONTEXT_HANDOFF status, refactor-gate convention |
