@@ -1,4 +1,4 @@
-<!-- version: 261010 -->
+<!-- version: 261011 -->
 # Chat Log
 
 Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forward-looking; finished work lives here. Add a row when a chat's last patch is applied. Date = the last day the chat was worked on / its final patch date (user convention, 261003). Titles marked (T) were supplied by the user; (R) were taken from ROADMAP.md because no title was supplied.
@@ -38,4 +38,4 @@ Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forw
 | patch_261009_chat14p2d.json | C14p2 | 8e1e58d | INV-2/3/5 results recorded; INV-5 corrected (nonzero but tiny); INV-21/22; patch hashes |
 | patch_261009_chat14p2e.json | C14p2 | 0d302bc | Data caveats register (RESEARCH_NOTES Section 12) + pointer |
 | patch_261009_chat14p2f.json | C14p2 | e8f79e2 | Audit onto currency_graph (canonical orientation), frozen oracle, equivalence tests |
-| patch_261010_chat14p2g.json | C14p2 | (record at next chat) | Close-out: gate PASS recorded, ROADMAP/CHAT_LOG/CONTEXT_HANDOFF status, refactor-gate convention |
+| patch_261010_chat14p2g.json | C14p2 | 15702de | Close-out: gate PASS recorded, ROADMAP/CHAT_LOG/CONTEXT_HANDOFF status, refactor-gate convention |

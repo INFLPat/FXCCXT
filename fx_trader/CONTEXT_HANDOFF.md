@@ -1,4 +1,4 @@
-<!-- version: 261010 -->
+<!-- version: 261011 -->
 # CONTEXT HANDOFF - FX/Crypto Trading Analysis Project
 
 Read before touching code. Conventions (FNORD, handoff, de-bloat) are in
@@ -342,6 +342,8 @@ Package `fx_trader/currency_graph/` (stdlib only; imports nothing from the repo,
 **Verified (label: run by Claude, Python 3.12.3 sandbox, `-W error`; user's 3.14.7 run at apply 261005: all 28 test modules PASS, incl. test_currency_graph against the REAL audit module):** 12 tests pass, incl. combinatorial ground truth (K4: 4 triangles, 7 cycles up to length 4; 8 pairs/6 currencies: 3 triangles, basis size 3; E - N + C with 2 components), injected k bps fault found at k bps (5, 50, 130.8), edge-order and pair-inversion invariance, differential agreement with the audit's triangle and basis-alias numbers over 7 random worlds at 1e-9 (against VERBATIM COPIES of 5 audit functions - the real module was not importable in Claude's sandbox), exact basis shift (7 bps), two-venue projection behaviour, Bellman-Ford. Test-the-test: breaking the cycle de-duplication rule made the cycle-count test fail.
 
 **Finding (MEASURED, synthetic world):** the arithmetic mid is not exactly inversion-symmetric (1/bid and 1/ask averaged differ from 1/mid by about half-spread squared, ~2.5e-5 bps at a 1 bp spread). Pair inversion therefore leaves |residual| unchanged only to second order in spread. Far too small to explain INV-5's 0.05-0.08 bps.
+
+**14p3 (261011) BUILT, real run pending:** `currency_graph/strengths.py` (zero-sum WLS; schemes unweighted / 1/spread / 1/spread^2; LOO fast hat-matrix path e/(1-h) and exact-refit oracle; leave-one-currency-out; views zero-sum, vs USD, equal-weight / user / inverse-spread baskets) and `run_strengths.py` (FX only; missing-pair policy B = full bars only AND D = all bars with degraded flag, both computed in one pass; `--full` per-bar JSONL). Core tests run by Claude (3.12, stubbed package init); runner and its test READ only. Decisions: weights as a parameter, both spread-weighted readings built, baskets include the currency itself, crypto deferred until weights are resolved. LOO runtime and fast-vs-oracle agreement on the real sandbox: UNKNOWN until the user runs it.
 
 **Not done / unknown:** engine cycles/basis reproduce the golden on the real sandbox (14p2a gate, run by user 261008, Python 3.14.7: a whole-report re-run of the current audit shows 0 differences; the currency_graph engine shows 0 FAIL / 0 FLIP against the golden's cycles and basis, found 4 alias cycles and 6 crypto-only 4-cycles); numpy path (14p4); runtime of leave-one-out on ~26k bars x 16 instruments is unknown (measure in 14p3); VENUE-edge semantics inside a cycle may be refined by chat 18; INV-16 row counts/coverage still to be pasted by the user (find command in chat 14p1); Kraken CSV folders now live outside the repo layout (`Kraken_OHLCVT_Q#_YYYY` vs `kraken_csv/YYQ#`) - ingest naming to be reconciled in 16p1/25p1.
 
