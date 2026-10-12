@@ -1,4 +1,4 @@
-<!-- version: 261011 -->
+<!-- version: 261012 -->
 # Chat Log
 
 Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forward-looking; finished work lives here. Add a row when a chat's last patch is applied. Date = the last day the chat was worked on / its final patch date (user convention, 261003). Titles marked (T) were supplied by the user; (R) were taken from ROADMAP.md because no title was supplied.
@@ -21,6 +21,7 @@ Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forw
 | C14 | 261005 | Cross-rate arithmetic, timestamp-alignment and timezone audit (ROADMAP 4) | DONE (261005). Payload 1 (code) `patch_261003_chat14.json` applied + pushed, commit 8dd6c71. Payload 2 (docs) `patch_261003_chat14b.json`, commit 3a2fc4b. Close-out `patch_261005_chat14c.json`: audit `main()` run on the user's machine (ok, 3.9 s), manifest verified, figures reproduced. Findings and decisions: CONTEXT_HANDOFF 4f; research: RESEARCH_NOTES.md |
 | C14p1 | 261005 | Currency-graph engine core (S2a) (R) | DONE 261005 (commits 0fbb0e6, 2d6e241; all 28 test modules PASS on 3.14.7). Package currency_graph (model, graph projections, cycles, evaluate), 12 tests, preflight tool, docs; INV-17 closed, INV-16 partly answered. Remaining S2 scope split into 14p2-14p4 (ROADMAP). CONTEXT_HANDOFF 4g |
 | C14p2 | 261010 | Audit refactor onto currency_graph with golden gate; INV-2/3/5 (R) | DONE 261010. audit_gate.py (golden comparer + engine mode): both comparisons PASS, 0 differences, 0 INFO after the refactor. Audit now delegates cycle discovery and per-bar numbers to currency_graph with canonical orientation (tests/oracle_audit_261003.py frozen oracle, equivalence tests). INV-2: no bulk thin-bar/range effect (extremes of GBP_CHF/EUR triangles sit in the lowest volume decile); INV-3: hour effect New-York-anchored; INV-5: nonzero but tiny (<0.1 bps), cause open (INV-21); INV-22 opened. Data caveats register: RESEARCH_NOTES Section 12 |
+| C14p3 | 261012 | Strengths: zero-sum WLS (unweighted, 1/spread, 1/spread^2), leave-one-pair-out fast + oracle, leave-one-currency-out, views (R) | DONE 261012 (commit 9f7829a + close-out patch b). currency_graph/strengths.py, run_strengths.py (policies B and D), run_strengths_by_hour.py; fast = oracle to 1.8e-11 bps; full run 47.4 s / 188 MB; INV-1 bars measured as the top LOO events; LOO smears faults onto innocent pairs; hub/arm structure; scheme matters on fault bars only; provisional FAULT flags and binding Strength fault rule. CONTEXT_HANDOFF 4h; RESEARCH_NOTES Section 13. Open: by-hour run, fault threshold, robust fit (14p4); numpy (14p5) |
 
 ## Patch and commit record
 
@@ -39,3 +40,5 @@ Append-only record of completed (and in-progress) chats. `ROADMAP.md` stays forw
 | patch_261009_chat14p2e.json | C14p2 | 0d302bc | Data caveats register (RESEARCH_NOTES Section 12) + pointer |
 | patch_261009_chat14p2f.json | C14p2 | e8f79e2 | Audit onto currency_graph (canonical orientation), frozen oracle, equivalence tests |
 | patch_261010_chat14p2g.json | C14p2 | 15702de | Close-out: gate PASS recorded, ROADMAP/CHAT_LOG/CONTEXT_HANDOFF status, refactor-gate convention |
+| patch_261011_chat14p3.json | C14p3 | 9f7829a | strengths.py, run_strengths.py, tests, doc status (pushed) |
+| patch_261012_chat14p3b.json | C14p3 | (record at next chat) | by-hour script + test; CONTEXT_HANDOFF 4h and fault rule; ROADMAP 14p4/14p5 split and risks; RESEARCH_NOTES INV-23..27 and Section 13; README |

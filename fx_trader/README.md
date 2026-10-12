@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 261011 -->
+<!-- version: 261012 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -92,6 +92,8 @@ python3 run_full_sweep.py --start YYYY-MM-DD --end YYYY-MM-DD --chat N   # all s
 python3 run_out_of_time_validation.py   # frozen-survivor replay on out-of-training windows
 python3 visualize_period_comparison.py  # period-comparison charts into charts/
 python3 audit_sandbox_alignment.py --chat N [--verify-manifest reports/<manifest>.json]   # read-only sandbox audit -> reports/ (run from fx_trader/)
+python3 run_strengths.py --chat N [--stride K] [--full]   # FX currency strengths, leave-one-out, views; policies B and D -> reports/
+python3 run_strengths_by_hour.py --chat N --full-dump reports/strengths_full_<...>.jsonl   # scheme dependence by UTC hour and DST cell (14p4 input)
 ```
 
 ## Cloud database
