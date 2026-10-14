@@ -1,4 +1,4 @@
-# version: 261013
+# version: 261014
 """
 run_detector_scan.py  (fx_trader/run_detector_scan.py)
 
@@ -16,7 +16,7 @@ DB (a mild look-ahead, stated; it only affects the THIN rule). Volume is
 assumed to be OANDA's tick count (UNVERIFIED).
 
 REPORTED: per detector - flagged bars, share, flags per UTC hour (24 values);
-overlap matrix (bars flagged by both); for each detector the number of bars it
+overlap matrix (bars flagged by both); runs of consecutive flagged bars (gap <= RUN_GAP_HOURS) overall and for flags A does not share; for each detector the number of bars it
 flags that A does NOT; the same for "A flags, X does not". Thresholds are the
 provisional module defaults (A 10 bps, B ratio 1.0, C as documented).
 
@@ -50,6 +50,7 @@ PAIRS = ["GBP_USD", "EUR_GBP", "GBP_JPY", "GBP_CHF", "EUR_USD", "USD_JPY", "USD_
 BPS = 1e4
 MAX_BARS = 200_000
 DETECTORS = ("A", "B_mean_spread", "B_arm_spread", "B_hour_median", "C")
+RUN_GAP_HOURS = 3   # flagged bars at most this many hours apart form one run (14p4b: the 88 B_arm-only bars are SIX day-long runs)
 
 
 def load_all(con) -> tuple:
@@ -65,9 +66,27 @@ def load_all(con) -> tuple:
     return bars, {k: statistics.median(v) for k, v in vols.items()}
 
 
+def _runs(stamps: list) -> list:
+    """Sorted stored-format stamps -> [{start, end, bars}], a new run whenever the gap exceeds RUN_GAP_HOURS."""
+    assert stamps == sorted(stamps), "stamps must be sorted"
+    assert len(stamps) <= MAX_BARS, "bar ceiling exceeded"
+    runs, prev = [], None
+    for t in stamps:
+        dt = datetime.strptime(t[:19], "%Y-%m-%dT%H:%M:%S")
+        if runs and (dt - prev).total_seconds() <= RUN_GAP_HOURS * 3600:
+            runs[-1]["end"] = t
+            runs[-1]["bars"] += 1
+        else:
+            runs.append({"start": t, "end": t, "bars": 1})
+        prev = dt
+    return runs
+
+
 def scan(bars: dict, typ_vol: dict, hooks: dict | None = None) -> dict:
     assert bars, "no bars"
     hist = HourSpreadHistory()
+    stamps_by = {d: [] for d in DETECTORS}
+    stamps_not_a = {d: [] for d in DETECTORS if d != "A"}
     flags = {d: Counter() for d in DETECTORS}          # detector -> hour -> count
     both = Counter()
     only = Counter()                                   # (X, "not_A") and ("A", "not_X")
@@ -92,12 +111,15 @@ def scan(bars: dict, typ_vol: dict, hooks: dict | None = None) -> dict:
         on = [d for d in DETECTORS if got[d]]
         for d in on:
             flags[d][hour] += 1
+            stamps_by[d].append(t)
         for i, d1 in enumerate(on):
             for d2 in on[i:]:
                 both[f"{d1}&{d2}"] += 1
         for d in DETECTORS:
             if d != "A":
                 only[f"{d}_not_A"] += got[d] and not got["A"]
+                if got[d] and not got["A"]:
+                    stamps_not_a[d].append(t)
                 only[f"A_not_{d}"] += got["A"] and not got[d]
         if hooks and hooks.get("count"):
             hooks["count"]("bars")
@@ -105,7 +127,8 @@ def scan(bars: dict, typ_vol: dict, hooks: dict | None = None) -> dict:
             "flagged": {d: sum(c.values()) for d, c in flags.items()},
             "flagged_share": {d: sum(c.values()) / n_full for d, c in flags.items()},
             "by_hour": {d: [c.get(h, 0) for h in range(24)] for d, c in flags.items()},
-            "overlap": dict(both), "disagreement_with_A": dict(only)}
+            "overlap": dict(both), "disagreement_with_A": dict(only),
+            "runs": {d: _runs(s) for d, s in stamps_by.items()}, "runs_not_A": {d: _runs(s) for d, s in stamps_not_a.items()}}
 
 
 def render_text(rep: dict) -> str:
@@ -116,6 +139,10 @@ def render_text(rep: dict) -> str:
         lines.append(f"{d:<14} {rep['flagged'][d]:>8} {rep['flagged_share'][d] * 100:>8.3f}  " + " ".join(f"{h:02d}:{rep['by_hour'][d][h]}" for h in hours))
     lines.append("overlap (both flagged): " + ", ".join(f"{k}={v}" for k, v in sorted(rep["overlap"].items()) if "&" in k and k.split("&")[0] != k.split("&")[1]))
     lines.append("disagreement with A: " + ", ".join(f"{k}={v}" for k, v in sorted(rep["disagreement_with_A"].items())))
+    lines.append(f"runs (flagged bars grouped, gap <= {RUN_GAP_HOURS} h): " + ", ".join(f"{d}={len(r)}" for d, r in rep["runs"].items()))
+    for d, r in rep["runs_not_A"].items():
+        if r:
+            lines.append(f"  {d} not-A runs (start..end bars): " + "; ".join(f"{x['start'][:13]}..{x['end'][:13]} {x['bars']}" for x in r[:12]) + (f" (+{len(r) - 12} more)" if len(r) > 12 else ""))
     return "\n".join(lines)
 
 

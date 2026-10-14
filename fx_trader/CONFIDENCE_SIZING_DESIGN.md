@@ -1,4 +1,4 @@
-<!-- version: 261003 -->
+<!-- version: 261014 -->
 # Confidence-Weighted Multi-Strategy Sizing - Design Spec
 
 How the five strategies (SMA, RSI, MACD, RSI+MACD confluence, Bollinger)
@@ -190,6 +190,7 @@ Candidates (cheap -> expensive):
   use) - must run cross-STRATEGY as well as cross-instrument (RSI/
   Confluence correlate +0.65 avg on the same instrument, Section 4e).
 - **Data completeness / asynchrony (Epps guard)** (chat 14, user request): discount confidence when an instrument's bars are missing or stale (e.g. Kraken GBP pairs: 21-406 missing hours) or when a cross-instrument correlation is estimated at a frequency where asynchrony biases it towards zero; inner-join, never forward-fill. Weight input / scalar multiplier. See `RESEARCH_NOTES.md` Section 7.
+- **Fault flags (chat 14p4):** bar-level FAULT_A / FAULT_B (three scales) / STALE_C / DEGRADED / BRIDGE (CONTEXT_HANDOFF 4i.8) feed the data-validity 'bad' tier and a confidence discount; persistent day-long arm offsets (4i.11) need a run-level flag; the binding Strength fault rule applies; no detector is canonical yet (user, 261013). Weight input versus hard gate: UNDECIDED.
 - **Executability / cost ratio** (chat 14): residual-to-spread ratio and venue-scoped executability of a multi-leg idea. Data-validity tiers are FIXED; the risk-appetite slider adjusts only this discount.
 - **Market cap/liquidity** (crypto) - blocked, no data source.
 - **Regulatory/eligibility status** - a separate GATE, not a confidence

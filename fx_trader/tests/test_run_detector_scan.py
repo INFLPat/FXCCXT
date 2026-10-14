@@ -1,4 +1,4 @@
-# version: 261013
+# version: 261014
 """
 tests/test_run_detector_scan.py
 
@@ -35,8 +35,24 @@ def test_scan_finds_only_the_faulted_bar():
         assert rep["flagged"][d] == 1, (d, rep["flagged"])
         assert rep["by_hour"][d][21] == 1 and sum(rep["by_hour"][d]) == 1
     assert rep["overlap"]["A&C"] == 1 and rep["disagreement_with_A"]["B_arm_spread_not_A"] == 0
+    one = [{"start": FAULT_STAMP, "end": FAULT_STAMP, "bars": 1}]
+    assert all(rep["runs"][d] == one for d in ds.DETECTORS) and all(r == [] for r in rep["runs_not_A"].values())
     assert rep["n_bars_with_hour_history"] > 14 * 24 - 24 * 10 - 1
     print("scan finds exactly the one faulted bar under A, B x3 and C.")
+
+
+def test_runs_group_consecutive_flagged_bars():
+    s = ["2024-01-01T00:00:00.000000000Z", "2024-01-01T01:00:00.000000000Z", "2024-01-01T04:00:00.000000000Z",
+         "2024-01-01T09:00:00.000000000Z", "2024-01-01T10:00:00.000000000Z"]
+    runs = ds._runs(s)
+    assert [(r["start"][11:13], r["end"][11:13], r["bars"]) for r in runs] == [("00", "04", 3), ("09", "10", 2)], runs
+    assert ds._runs([]) == []
+    try:
+        ds._runs(s[::-1])
+        raise RuntimeError("expected a rejection of unsorted stamps")
+    except AssertionError as exc:
+        assert "sorted" in str(exc)
+    print("run grouping assertions passed (gap of exactly 3 h joins, 5 h splits).")
 
 
 def test_degraded_bar_is_skipped_not_scanned():
@@ -81,6 +97,7 @@ def test_config_rejections():
 
 if __name__ == "__main__":
     test_scan_finds_only_the_faulted_bar()
+    test_runs_group_consecutive_flagged_bars()
     test_degraded_bar_is_skipped_not_scanned()
     test_config_rejections()
     print("\nAll run_detector_scan tests passed.")

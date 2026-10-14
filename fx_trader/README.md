@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 261013 -->
+<!-- version: 261014 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -27,6 +27,9 @@ fx_trader/
 ├── audit_sandbox_alignment.py     # read-only sandbox audit: formats, gaps, cross-rate cycles, basis, timing, bars/year, manifest
 ├── audit_gate.py                  # golden-file gate: compares audit reports (and a currency_graph-built cycles/basis report) with the golden JSON
 ├── run_residual_investigations.py # INV-2/3/5: residual tails vs volume and bar range, DST anchoring of the hour effect, signed-mean bias test (read-only)
+├── run_fault_experiment.py        # synthetic stale/wide/missing fault injection: Huber k x scale, attribution, detectors, scheme gap (14p4)
+├── run_inv4_attribution.py        # INV-4 on the 17 real fault bars: LS vs Huber vs hub/arm, detectors (read-only, 14p4)
+├── run_detector_scan.py           # detectors A/B/C over every full sandbox bar, with runs (read-only, 14p4/14p4b)
 ├── requirements-dev.txt           # dev-only: coverage, hypothesis
 ├── run_monitor.py                  # run monitor: duration/metadata JSONL logs into logs/ (gitignored); see its docstring
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
