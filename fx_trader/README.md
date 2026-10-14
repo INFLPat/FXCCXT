@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 261012 -->
+<!-- version: 261013 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -61,7 +61,7 @@ fx_trader/
 │   ├── strategy_clustering.py      # cross-strategy correlation: cluster and pairwise-discount mechanisms
 │   ├── base_metrics.py             # candidate scoring-weight blends (cost-adjusted, effect size)
 │   └── validation_orchestrator.py  # Tier 0-4 gate, wires the above together
-├── currency_graph/                 # typed-edge currency graph engine (chat 14p1): model, 3 projections, cycles, evaluate, strengths (14p3, run via run_strengths.py); stdlib only
+├── currency_graph/                 # typed-edge currency graph engine (chat 14p1): model, 3 projections, cycles, evaluate, strengths (14p3, run via run_strengths.py), robust (Huber multi-k, hub/arm paths) and detectors A/B/C (14p4); stdlib only
 ├── tests/                          # one test module per backtest/data/broker component
 ├── utilities/                      # apply_patch.py + apply_patch.command (double-click launcher) - session-handoff tool, plus chat_preflight.py (chat-start block); see utilities/README.md
 └── run_*.py                        # synthetic-data demos (the real-sandbox run_*.py scripts are listed above)
@@ -94,6 +94,9 @@ python3 visualize_period_comparison.py  # period-comparison charts into charts/
 python3 audit_sandbox_alignment.py --chat N [--verify-manifest reports/<manifest>.json]   # read-only sandbox audit -> reports/ (run from fx_trader/)
 python3 run_strengths.py --chat N [--stride K] [--full]   # FX currency strengths, leave-one-out, views; policies B and D -> reports/
 python3 run_strengths_by_hour.py --chat N --full-dump reports/strengths_full_<...>.jsonl   # scheme dependence by UTC hour and DST cell (14p4 input)
+python3 run_fault_experiment.py --chat N [--spreads db]   # synthetic stale/wide/missing faults: Huber k x scale, attribution, detectors, scheme gap -> reports/
+python3 run_inv4_attribution.py --chat N                 # INV-4 on the 17 real fault bars (read-only) -> reports/
+python3 run_detector_scan.py --chat N                    # detectors A/B/C over every full sandbox bar (read-only) -> reports/
 ```
 
 ## Cloud database

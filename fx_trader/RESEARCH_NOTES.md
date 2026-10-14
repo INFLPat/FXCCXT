@@ -1,4 +1,4 @@
-<!-- version: 261012 -->
+<!-- version: 261013 -->
 # Research Notes
 
 Read after `CONTEXT_HANDOFF.md` (esp. Section 4f) and `ROADMAP.md`. Purpose: keep what chat 14 learned from the literature, the web and the data so the cartesian chats (14p1, 17p1, 17p2, 18, 19) start with context instead of from scratch and do not re-litigate settled points. Built chat 14, 261003. Add new research as dated sections; fold resolved items into CONTEXT_HANDOFF as decision + evidence.
@@ -157,4 +157,14 @@ Canonical record: `CONTEXT_HANDOFF.md` Section 4h (measurements, structure, faul
 - INV-16 / second sources: a second source for the same pair is a parallel edge (a 2-cycle) and splits an arm; Kraken FX pairs and Dukascopy are candidates (16p1), with the bar-stamp convention (INV-11) and sub-hour skew (INV-12) as caveats. Currencies with 3 or more pairs are not pure series, so the degeneracy shrinks as the universe grows.
 - INV-5 / INV-21: the strengths treat the quote offsets as exact; effect (expected under 0.1 bps) untested.
 - New: INV-23 (fault definition and scheme), INV-24 (derived fill), INV-25 (hour dependence), INV-26 (second source for arms), INV-27 (D vs B on a consumer).
+
+## 14. Chat 14p4 findings (261013)
+
+Canonical record: `CONTEXT_HANDOFF.md` Section 4i. Research-relevant points only:
+- INV-23: the 17 bars with max |LOO| > 10 bps split into stale (5 by rule), thin (3) and wide-at-rollover/event (9); 13 of 17 at 21-22 UTC; the CHF arm dominates (14 of 17). A 10 bps absolute flag is hour-confounded; the spread-normalised B_arm flag keeps the four INV-1 bars and drops the wide group. Whether the wide group is noise or a bad quote needs a second source (INV-26).
+- INV-4: hub/arm median-of-paths names the correct arm on the four INV-1 bars; LOO is an arm-level attributor for a single fault (synthetic top-1 0.93-1.00) and fails on level smear, two simultaneous faults (untested) and the arm-leg tie.
+- INV-25: scheme gap about 0.05 x error (flat) to 0.10 x error (rollover) in the synthetic world; the real 2022-05-04 21:00 bar shows about 0.3 x error.
+- INV-22: the spread-normalised B detectors are the first answer (4i.5); the spread-normalised hour-by-hour residual table is still open (14p4b).
+- New open: the 88 B_arm-only bars (second-source check), two-fault identifiability, B_hour threshold.
+
 
