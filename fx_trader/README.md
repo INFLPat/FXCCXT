@@ -30,6 +30,7 @@ fx_trader/
 ├── run_fault_experiment.py        # synthetic stale/wide/missing fault injection: Huber k x scale, attribution, detectors, scheme gap (14p4)
 ├── run_inv4_attribution.py        # INV-4 on the 17 real fault bars: LS vs Huber vs hub/arm, detectors (read-only, 14p4)
 ├── run_detector_scan.py           # detectors A/B/C over every full sandbox bar, with runs (read-only, 14p4/14p4b)
+├── run_calibration_stats.py       # read-only calibration statistics for the synthetic fault worlds: per-hour LOO/noise/spread/volume shape, real flag counts on threshold grids, mask, block-start counts (14p4-ii)
 ├── requirements-dev.txt           # dev-only: coverage, hypothesis
 ├── run_monitor.py                  # run monitor: duration/metadata JSONL logs into logs/ (gitignored); see its docstring
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
