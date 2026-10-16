@@ -1,4 +1,4 @@
-<!-- version: 261014 -->
+<!-- version: 261015 -->
 # Research Notes
 
 Read after `CONTEXT_HANDOFF.md` (esp. Section 4f) and `ROADMAP.md`. Purpose: keep what chat 14 learned from the literature, the web and the data so the cartesian chats (14p1, 17p1, 17p2, 18, 19) start with context instead of from scratch and do not re-litigate settled points. Built chat 14, 261003. Add new research as dated sections; fold resolved items into CONTEXT_HANDOFF as decision + evidence.
@@ -119,6 +119,9 @@ Causes of the residual tails and stress days are NOT yet established. "Evidence"
 | INV-25 | Does scheme dependence (and fault frequency) vary by UTC hour / DST cell (rollover)? | not yet measured | `run_strengths_by_hour.py` (user runs, pastes) | dump + sandbox DB | 14p4 |
 | INV-26 | Value of a second source for the 2-leg arms (parallel edge splits USD_CHF from GBP_CHF); bar-stamp convention and skew caveats (INV-11, INV-12) | DERIVED structure (CONTEXT_HANDOFF 4h.3) | Prioritise those pairs in the source inventory | second source | 16p1 |
 | INV-27 | Effect of policy D vs B on a real downstream consumer | 9 degraded bars (0.03%); aggregate statistics unchanged; degraded bars unverifiable | Revisit when a consumer exists | consumer | 23 / 24 |
+| INV-28 | Why does noise not scale with each pair's own spread (rollover: about 0.45-0.55 bps absolute for five pairs, about 0.9-0.95 for the two CHF pairs)? | MEASURED 14p4-ii a1 (ratios blended through the cycle space: INFERRED); noise ratio about 0.065 flat | Per-pair noise from the a1 JSON and the bar dump; compare with a second source | none | 14p4-iii |
+| INV-29 | Are thin or stale legs at rollover fault evidence at all? GBP_CHF has zero range AND volume <= 2 on 1.5% of rollover bars, thin 6.2%; only 4-5 such bars are among the 17 A faults | MEASURED 14p4-ii a1 | Compare price error on stale/thin bars with matched bars; second source | second source for GBP_CHF | 14p4-iii, 16p1 |
+| INV-30 | What drives the heavy LOO tails that remain after masking (p99 / MAD sigma 6.5-6.9; t df about 2.5-3 INFERRED)? Scale mixture by hour or day, event days, or spread-heteroskedastic noise | MEASURED 14p4-ii a1 | Tail fit by hour class from the bar dump; compare the proportional and absolute noise worlds | none | 14p4-iii |
 
 ## 11. Coverage ledger (chat 14)
 
@@ -147,9 +150,12 @@ Purpose: every analysis that uses survivors or cross-rate results cites this tab
 | Degraded bars (9, 0.03%): D vs B unseen on a consumer; mapping to catalogued gaps CONFIRMED by timestamps | MEASURED | Strengths on those bars: unverifiable, not faulty | Aggregate LOO statistics | 23 / 24 |
 | Spread-based weights assume wide spread = noisy, false for a stale quote | INFERRED (one bar) | Scheme choice on fault bars | Ordinary bars | 14p4 |
 | Strengths are FX only; crypto pending weight and fault resolution | READ | Any crypto strength use | FX results | after 14p4 |
-| Detector thresholds (A 10 bps, B ratio 1.0, C rule) and Huber starting values (NOISE_RATIO 0.25, MAD floor) are provisional and unvalidated on real data | MEASURED counts, no truth labels | Any use of a flag to mask, weight or size | Raw data, ordinary-bar strengths | 14p4b |
-| Synthetic-world assumptions (noise 0.15 x spread, wide-fault error 0.5 x spread, stale = volume 1 and range 0, independent bars and pair spreads); rollover false rates look too high against real counts | INFERRED | Every synthetic detection and false-flag rate, C especially (stale by construction) | Real flag counts, the real INV-4 results | 14p4b |
-| Persistent day-long JPY-arm offsets (six runs, 4-9 bps) | MEASURED (Claude, read-only) ; cause unknown | Cross-rate or relative-strength work on JPY legs in those windows; residual-dynamics benchmarks (chat 24) | Single-instrument survivors (INFERRED) | 14p4b (run-level view), 16p1 |
+| Detector thresholds (A 10 bps, B ratio 1.0, C rule) and Huber starting values (NOISE_RATIO 0.25, MAD floor) are provisional and unvalidated on real data | MEASURED counts, no truth labels | Any use of a flag to mask, weight or size | Raw data, ordinary-bar strengths | 14p4-iii |
+| Synthetic-world assumptions (noise 0.15 x spread, wide-fault error 0.5 x spread, stale = volume 1 and range 0, independent bars and pair spreads); rollover false rates look too high against real counts | INFERRED | Every synthetic detection and false-flag rate, C especially (stale by construction) | Real flag counts, the real INV-4 results | 14p4-iii (14p4-ii measured the real shape: Section 15) |
+| Persistent day-long JPY-arm offsets (six runs, 4-9 bps) | MEASURED (Claude, read-only) ; cause unknown | Cross-rate or relative-strength work on JPY legs in those windows; residual-dynamics benchmarks (chat 24) | Single-instrument survivors (INFERRED) | 14p4-iv (run-level view), 16p1 |
+| Real noise, tail and spread shape differs from the parametric world (noise ratio about 0.065 flat vs 0.15 assumed; absolute noise about constant across pairs at rollover; LOO p99 / MAD sigma 6.5-6.9 and kurtosis 7-29 in ref; log-spread correlation 0.5-0.7) | MEASURED (14p4-ii a1); per-pair noise ratios INFERRED (blended through the cycle space) | Every parametric-world detection rate, false rate and strength error (CONTEXT_HANDOFF 4i.6, 4i.10) | Real flag counts, real INV-4 results, ordinary-bar strengths | 14p4-iii |
+| The 'ref' calibration population is CIRCULAR for A and B (mask built from A flags and B_mean runs) and removes the six JPY runs | READ (4j.2) | Noise-shape and false-rate estimates for A and B from ref | Flag rates from `all`; C (not in the mask) | 14p4-iii, 14p4-iv |
+| Block-resampled results: no blocks across gaps, bars next to gaps under-represented, overlapping blocks | READ (4j.5) | Any block-world false-run rate, run-level result or CI | Single-bar detection rates from per-bar injection | 14p4-iii, 14p4-iv |
 
 ## 13. Chat 14p3 findings (261012)
 
@@ -172,5 +178,13 @@ Canonical record: `CONTEXT_HANDOFF.md` Section 4i. Research-relevant points only
 - 261014 (user's runs and Claude's follow-up): the 88 B_arm-only bars are SIX day-long JPY-arm offset runs of 4-9 bps (2023-04-05, 2023-04-27/28, 2024-03-26/27, 2024-12-24, 2025-04-15/16, 2025-12-24), not isolated bars; five match the audit's INV-4 stress days; INFERRED to be most of INV-6's 90 suspect bars; causes UNKNOWN; whether data fault or real dislocation UNKNOWN (second source). A 10 bps per-bar flag cannot see them (max 9.3 bps). Two fault SHAPES now: transient single bars and persistent arm offsets.
 - INV status after 14p4: INV-1 stale pattern confirmed on 4-5 bars (cause still unknown); INV-4 arm-level attribution DONE (event-calendar half stays 17p1); INV-6 largely explained as the JPY runs (INFERRED); INV-21 and INV-22 -> 14p4c; INV-23 types done, thresholds open (14p4b); INV-24 untouched; INV-25 by-hour run done, synthetic scheme gap about 0.04-0.13 x error (real 0.3 x); INV-26 stronger: the six JPY runs and the 17 bars are the check list; INV-27 untouched.
 - The user ran the db-spread experiment and the scan on 3.14.7 (commit 6032d98); the scan reproduced Claude's counts exactly.
+
+## 15. Chat 14p4-ii findings (261015)
+
+Canonical record: `CONTEXT_HANDOFF.md` Section 4j (numbers, decisions, scope review, outstanding list). Research-relevant points only:
+- The parametric synthetic world is misspecified against the real bars (Section 12 row; 4j.3): noise ratio 0.065 vs 0.15 assumed, noise not proportional to spread across pairs, heavy tails after masking, correlated pair spreads. Synthetic rates from 14p4 (Section 14) are uncalibrated.
+- INV-28 (noise vs spread), INV-29 (thin/stale legs without price error), INV-30 (tail drivers) opened. INV-4 event half and the JPY runs: MEMORY leads only (Easter weeks, Christmas Eve, a BoJ meeting; 4j.8), UNVERIFIED; the user will supply event information separately.
+- Real flag counts by hour class and DST cell on threshold grids are stored in the a1 JSON (A, B x3 scales, C); the detector-C rate on real bars is a flag rate, not a false rate. A at 10 bps: 0.064% overall, 1.1% at rollover_ny (including true faults), 0 in the masked reference.
+- Method note for later research chats: block resampling has structural limits at gaps and for long blocks (4j.5); an empirical-residual world sees only cycle-space noise.
 
 

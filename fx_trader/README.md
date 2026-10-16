@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 261014 -->
+<!-- version: 261015 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -101,6 +101,7 @@ python3 run_strengths_by_hour.py --chat N --full-dump reports/strengths_full_<..
 python3 run_fault_experiment.py --chat N [--spreads db]   # synthetic stale/wide/missing faults: Huber k x scale, attribution, detectors, scheme gap -> reports/
 python3 run_inv4_attribution.py --chat N                 # INV-4 on the 17 real fault bars (read-only) -> reports/
 python3 run_detector_scan.py --chat N                    # detectors A/B/C over every full sandbox bar (read-only) -> reports/
+python3 run_calibration_stats.py --chat N --dump-bars   # read-only calibration statistics + per-bar dump for the synthetic worlds (14p4-ii) -> reports/
 ```
 
 ## Cloud database
