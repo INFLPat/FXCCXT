@@ -1,4 +1,4 @@
-<!-- version: 261015 -->
+<!-- version: 261016 -->
 # Research Notes
 
 Read after `CONTEXT_HANDOFF.md` (esp. Section 4f) and `ROADMAP.md`. Purpose: keep what chat 14 learned from the literature, the web and the data so the cartesian chats (14p1, 17p1, 17p2, 18, 19) start with context instead of from scratch and do not re-litigate settled points. Built chat 14, 261003. Add new research as dated sections; fold resolved items into CONTEXT_HANDOFF as decision + evidence.
@@ -186,5 +186,14 @@ Canonical record: `CONTEXT_HANDOFF.md` Section 4j (numbers, decisions, scope rev
 - INV-28 (noise vs spread), INV-29 (thin/stale legs without price error), INV-30 (tail drivers) opened. INV-4 event half and the JPY runs: MEMORY leads only (Easter weeks, Christmas Eve, a BoJ meeting; 4j.8), UNVERIFIED; the user will supply event information separately.
 - Real flag counts by hour class and DST cell on threshold grids are stored in the a1 JSON (A, B x3 scales, C); the detector-C rate on real bars is a flag rate, not a false rate. A at 10 bps: 0.064% overall, 1.1% at rollover_ny (including true faults), 0 in the masked reference.
 - Method note for later research chats: block resampling has structural limits at gaps and for long blocks (4j.5); an empirical-residual world sees only cycle-space noise.
+
+## 16. Chat 14p4-iii findings (261018)
+
+Canonical record: `CONTEXT_HANDOFF.md` Section 4k. Research-relevant points only:
+- Method: a detection claim is only as good as the world that produced it. Here the empirical world (real residuals) and the calibrated t-tail world agree to about 0.05 on single-fault detection, while the old parametric_db world does not (overstated B_hour 4.8% vs 0.9% real false rate; A on wide faults 0.42 vs 0.25). Earlier synthetic rates (CONTEXT_HANDOFF 4i.6, 4i.10) stay labelled uncalibrated.
+- Structural identifiability (new, INFERRED from the hub/arm topology, MEASURED in the experiment): two faults on the two series legs of one arm with opposite path effect cancel in every residual and in the arm path (A10 0.00, hub/arm clean 1.00 for equal magnitudes); only a second source, or non-price evidence such as volume (detector C), can see them. Different-arm double faults make hub/arm 'ambiguous' by design; plain LS-LOO finds both only about half the time.
+- Tail shape: noise tails are fitted by Student-t df 2.5-3 (or a per-bar scale mixture sigma 0.25-0.5) after the hat matrix; proportional scale about 0.04-0.08 x spread. t and mixture are not discriminated by the data (INV-30 stays open; both are stored).
+- New open items: INV-31 does detector C's thin/stale flag at rollover carry price error? (INV-29, now with a swept family (c): C sees only the volume signature, not price error; the real-bar answer needs a second source); INV-32 which volume fraction of typical is the right 'thin' boundary (sweep volume as a fraction of typical); INV-33 per-class stratified injection for synthetic worlds (rollover n is about 80 per scenario now).
+- Block-run null: false runs on clean real bars grow sublinearly with block length (flags cluster); B_arm and A are 0 in the masked reference by construction, so use the 'all' population for them.
 
 
