@@ -1,4 +1,4 @@
-<!-- version: 261016 -->
+<!-- version: 261018 -->
 # Research Notes
 
 Read after `CONTEXT_HANDOFF.md` (esp. Section 4f) and `ROADMAP.md`. Purpose: keep what chat 14 learned from the literature, the web and the data so the cartesian chats (14p1, 17p1, 17p2, 18, 19) start with context instead of from scratch and do not re-litigate settled points. Built chat 14, 261003. Add new research as dated sections; fold resolved items into CONTEXT_HANDOFF as decision + evidence.
@@ -195,5 +195,56 @@ Canonical record: `CONTEXT_HANDOFF.md` Section 4k. Research-relevant points only
 - Tail shape: noise tails are fitted by Student-t df 2.5-3 (or a per-bar scale mixture sigma 0.25-0.5) after the hat matrix; proportional scale about 0.04-0.08 x spread. t and mixture are not discriminated by the data (INV-30 stays open; both are stored).
 - New open items: INV-31 does detector C's thin/stale flag at rollover carry price error? (INV-29, now with a swept family (c): C sees only the volume signature, not price error; the real-bar answer needs a second source); INV-32 which volume fraction of typical is the right 'thin' boundary (sweep volume as a fraction of typical); INV-33 per-class stratified injection for synthetic worlds (rollover n is about 80 per scenario now).
 - Block-run null: false runs on clean real bars grow sublinearly with block length (flags cluster); B_arm and A are 0 in the masked reference by construction, so use the 'all' population for them.
+
+## 17. Research brief: the 17 fault bars and the six JPY-arm runs (added 261018, chat 14p4-iii review)
+
+Purpose: ONE place with the exact dates, times and evidence locations, so 16p1 (second source), 17p1 (event calendar) and any later chat start from the same list. Evidence labels: the bar list and run list are MEASURED (CONTEXT_HANDOFF 4i.3, 4i.11; days and London times computed here); every event lead is MEMORY and UNVERIFIED; no cause is known. All times are bar OPEN time (T3; absolute convention INV-11 unconfirmed), UTC; London shown for reading (BST = UTC+1 from the last Sunday of March to the last Sunday of October).
+
+**17.1 Where the detail lives (yes: it is the OANDA data).** The sandbox DB `candles` table holds, for each of the 8 FX pairs, H1 bar bid/ask open-high-low-close and `volume` (assumed OANDA tick count, UNVERIFIED). Per-bar detail already extracted locally (gitignored, re-upload to a chat that needs it): `reports/inv4_attribution_chat14_261014_p4i.json` (the 17 bars: per-pair volume, range, typical volume, spreads, path estimates, detector flags), `reports/detector_scan_..._p4d3.json` (`runs`, `runs_not_A`: the six JPY runs), `reports/calibration_bars_chat14_261015_a1.jsonl` (every full bar: spread, volume, range, LOO, z, flags). Nothing outside the sandbox has been looked at yet.
+
+**17.2 The 17 fault bars (max |LOO| > 10 bps, unweighted).**
+
+| # | UTC bar OPEN time | day | London | type (heuristic, 4i.3) | what the data shows (MEASURED, 4i.3) | event lead (MEMORY, UNVERIFIED) |
+|---|---|---|---|---|---|---|
+| 1 | 2022-05-04T19:00Z | Wed | 20:00 BST | thin | USD_CHF vol 164, range 4 bps while GBP_USD moved 123 (CHF arm) | FOMC day (MEMORY) |
+| 2 | 2022-05-04T20:00Z | Wed | 21:00 BST | stale | USD_CHF vol 1, close unchanged, spread frozen 3.25 | FOMC day (MEMORY) |
+| 3 | 2022-05-04T21:00Z | Wed | 22:00 BST | stale | USD_CHF vol 1, close unchanged, spread frozen 3.25; first bar of the USD_CHF-only 6 h gap | FOMC day (MEMORY) |
+| 4 | 2022-05-08T21:00Z | Sun | 22:00 BST | stale | EUR_GBP vol 1, range 0 (EUR arm); Sunday open; EUR_GBP-only 4 h gap follows | Sunday reopen |
+| 5 | 2022-05-19T21:00Z | Thu | 22:00 BST | thin | rollover; CHF arm | rollover hour |
+| 6 | 2022-11-03T11:00Z | Thu | 11:00 GMT | wide | spread 3-15x typical (arm) | BoE decision day, announcement ~12:00 UTC (MEMORY) |
+| 7 | 2022-12-11T22:00Z | Sun | 22:00 GMT | wide | Sunday open, US winter | Sunday reopen |
+| 8 | 2023-01-26T22:00Z | Thu | 22:00 GMT | wide | rollover (US winter) | rollover hour |
+| 9 | 2023-03-19T21:00Z | Sun | 21:00 GMT | wide | Sunday open; CHF arm | UBS / Credit Suisse takeover weekend (MEMORY) |
+| 10 | 2023-04-07T19:00Z | Fri | 20:00 BST | thin | late Friday | Good Friday (MEMORY: compute, not search) |
+| 11 | 2023-04-16T21:00Z | Sun | 22:00 BST | stale | GBP_CHF vol 1; Sunday open | Easter Sunday evening reopen |
+| 12 | 2024-08-04T21:00Z | Sun | 22:00 BST | stale | GBP_CHF vol 2, range 19.05, spread 22.7 (the odd one: wide spread AND wide range); Sunday open | eve of the 5 Aug 2024 yen / carry unwind (MEMORY) |
+| 13 | 2024-12-24T21:00Z | Tue | 21:00 GMT | wide | Christmas Eve early close | Christmas Eve |
+| 14 | 2025-04-07T21:00Z | Mon | 22:00 BST | wide | rollover | tariff-turmoil week (MEMORY) |
+| 15 | 2025-04-13T21:00Z | Sun | 22:00 BST | wide | Sunday open | Sunday reopen; Easter week |
+| 16 | 2025-04-15T21:00Z | Tue | 22:00 BST | wide | rollover | Easter week |
+| 17 | 2025-08-03T21:00Z | Sun | 22:00 BST | wide | Sunday open | Sunday reopen |
+Type counts: 5 stale, 3 thin, 9 wide. 13 of 17 are at 21-22 UTC (the first bar after the New York 17:00 rollover); 14 of 17 are on the CHF arm; 7 of the 17 are Sunday evening reopens (bars right after the weekly open, thin by nature).
+
+**17.3 The six day-long JPY-arm offset runs (the 88 B_arm-only bars; B_arm flags, detector C flags none, maximum LOO 9.3 bps so detector A at 10 bps cannot see them; USD_JPY LOO equal and opposite because the arm legs are in series).**
+
+| # | start (UTC, bar open) | end (UTC, bar open) | bars | London start -> end | signed GBP_JPY LOO median (bps) | JPY-path deviation (bps) | calendar lead (MEMORY / computed) |
+|---|---|---|---|---|---|---|---|
+| 1 | 2023-04-05T00:00Z (Wed) | 2023-04-05T19:00Z (Wed) | 19 | 01:00 BST -> 20:00 BST | -5.7 | +5.6 | Wednesday before Easter (Good Friday 2023-04-07) |
+| 2 | 2023-04-27T22:00Z (Thu) | 2023-04-28T19:00Z (Fri) | 21 | 23:00 BST -> 20:00 BST | -8.9 | +8.8 | BoJ meeting 28 Apr 2023 (MEMORY); eve of Japan Golden Week |
+| 3 | 2024-03-26T22:00Z (Tue) | 2024-03-27T20:00Z (Wed) | 23 | 22:00 GMT -> 20:00 GMT | -6.6 | +6.6 | Easter week (Good Friday 2024-03-29); BoJ ended negative rates 19 Mar 2024 (MEMORY) |
+| 4 | 2024-12-24T02:00Z (Tue) | 2024-12-24T17:00Z (Tue) | 13 | 02:00 GMT -> 17:00 GMT | -4.7 | +4.6 | Christmas Eve; catalogued HOLIDAY_CANDIDATE gap day |
+| 5 | 2025-04-15T23:00Z (Tue) | 2025-04-16T18:00Z (Wed) | 11 | 00:00 BST -> 19:00 BST | -4.4 | +4.3 | Easter week (Good Friday 2025-04-18) |
+| 6 | 2025-12-24T08:00Z (Wed) | 2025-12-24T08:00Z (Wed) | 1 | 08:00 GMT -> 08:00 GMT | -3.6 | +3.6 | Christmas Eve |
+Five of the six match the audit's INV-4 stress days for the GBP_JPY triangle; INFERRED to be most of INV-6's 90 suspect bars. Whether data fault or real dislocation: UNKNOWN. A real market cannot keep a triangle inconsistent by 4-9 bps for hours against 1.5 bps spreads, so a persistent offset points at the quotes (one leg stale, lagging, or priced differently by the broker): INFERRED, untested.
+
+**17.4 How to research it (INV-34; method fixed BEFORE looking at news, to avoid after-the-fact storytelling).**
+1. Pull the local evidence first (no search needed): for each window, GBP_JPY, USD_JPY and GBP_USD bid/ask closes, volume, range and the implied cross, saved as a small local table. Claude can write this read-only query in the 16p1 chat; it costs one query per window.
+2. Second price source for the SAME windows (this is the only thing that can separate the two series legs of an arm and that can tell a venue-local fault from a market-wide one): (a) OANDA M1 or S5 candles with `price=BA` through the user's practice token (same broker, so it tests whether the H1 close was stale or an aggregation artefact; use `from`+`count` only, never `to` with `count`: known OANDA bug 2); (b) Dukascopy free historical bid/ask (a DIFFERENT dealer, so independent; provider terms UNREAD, timestamp zone and bar convention to confirm); (c) HistData M1 (free, personal use; the timestamp-resolution caveat in Section 5); (d) Kraken FX pairs (INV-16: GBP/JPY availability UNKNOWN); (e) ECB / BoE daily fixes only check levels, not executable prices.
+3. Per window compare each leg against the second source in bps at matching open-time stamps (confirm the stamp convention first on a quiet day with an unambiguous move, INV-11). Verdicts: the leg that deviates is the culprit; both legs match the second source = the arm offset is real or broker-wide; the second source shows the same offset = market-wide.
+4. Calendar and notices, searched AFTER step 3: (a) the broker's own holiday and early-close schedules and any service announcements for each date, via the broker's pages and Internet Archive snapshots (web.archive.org; coverage unknown, INV-20); (b) central-bank meeting calendars on the banks' own sites (BoJ, BoE, FOMC, SNB, ECB) for the dates and times in 17.2-17.3; (c) economic-calendar archives by date (Forex Factory, Investing.com, Trading Economics: release times in UTC); (d) holidays are COMPUTED, not searched (Good Friday 2023-04-07, 2024-03-29, 2025-04-18; Easter Monday the Monday after; Japan Golden Week from 29 April; UK bank holidays); (e) news-timeline searches of the form '<pair or currency> <date> thin liquidity / flash move / intervention' on wire services, for 17.2 rows only when steps 1-3 say a real move is plausible.
+5. Control for coincidence: almost any date has SOME headline. Compare the flagged windows with matched control windows (same UTC hour and weekday, not flagged) and ask whether events are enriched in the flagged set; record a verdict per window as data fault / venue-local / market-wide / unknown, with the evidence, in an INV-34 table (window, legs vs second source in bps, event or notice found, verdict).
+6. What the user can supply that saves tokens: an OANDA M1 or S5 pull for the 23 windows (local, token needed); a Dukascopy download of the same pairs and windows; any broker notices you already know of; confirmation of whether Kraken lists GBP/JPY.
+
+**17.5 Other items from the 14p4-iii review (new INV-34).** INV-34: second-source and event check of the 17 fault bars and six JPY-arm runs (above); owner chats 16p1 (second source) and 17p1 (event calendar).
 
 
