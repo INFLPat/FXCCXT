@@ -1,4 +1,4 @@
-# version: 261016
+# version: 261021
 """
 run_world_experiment.py  (fx_trader/run_world_experiment.py)
 
@@ -762,11 +762,11 @@ def segments(rows: list, pop: str) -> list:
     return segs
 
 
-def count_runs(flags: list, s: int, length: int, d: int) -> int:
+def count_runs(flags: list, s: int, length: int, d: int, run_gap: int = RUN_GAP) -> int:
     runs, prev = 0, None
     for j in range(s, s + length):
         if flags[j][d]:
-            runs += prev is None or j - prev > RUN_GAP
+            runs += prev is None or j - prev > run_gap
             prev = j
     return runs
 

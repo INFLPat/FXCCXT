@@ -1,5 +1,6 @@
-# version: 261005
+# version: 261021
 requests>=2.31.0
+numpy>=2.0  # currency_graph/runlevel.py (14p4-iv); stdlib oracle kept in its tests
 psycopg2-binary>=2.9.0
 ccxt>=4.0.0
 matplotlib>=3.8  # visualize_period_comparison.py; also installs numpy

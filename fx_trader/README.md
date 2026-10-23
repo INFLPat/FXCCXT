@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 261016 -->
+<!-- version: 261021 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -32,6 +32,7 @@ fx_trader/
 ├── run_detector_scan.py           # detectors A/B/C over every full sandbox bar, with runs (read-only, 14p4/14p4b)
 ├── run_calibration_stats.py       # read-only calibration statistics for the synthetic fault worlds: per-hour LOO/noise/spread/volume shape, real flag counts on threshold grids, mask, block-start counts (14p4-ii)
 ├── run_world_experiment.py        # fault-injection WORLDS (parametric, empirical, 4 calibrated) x core/family/double/adjacent/blocks scenario sets; grids, histograms, Tier 2 Huber JSONL; report only (14p4-iii)
+├── run_runlevel_experiment.py     # run-level view for persistent arm offsets: numpy statistics x windows x scales x thresholds, injection, real runs, per-bar dump (14p4-iv; built, see CONTEXT_HANDOFF 4l)
 ├── requirements-dev.txt           # dev-only: coverage, hypothesis
 ├── run_monitor.py                  # run monitor: duration/metadata JSONL logs into logs/ (gitignored); see its docstring
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
@@ -103,6 +104,7 @@ python3 run_fault_experiment.py --chat N [--spreads db]   # synthetic stale/wide
 python3 run_inv4_attribution.py --chat N                 # INV-4 on the 17 real fault bars (read-only) -> reports/
 python3 run_detector_scan.py --chat N                    # detectors A/B/C over every full sandbox bar (read-only) -> reports/
 python3 run_world_experiment.py --chat N --bars reports/calibration_bars_<...>.jsonl [--a1-json ...] [--sandbox-db ...] [--regress-p4db ...]   # fault worlds, report only (14p4-iii) -> reports/
+python3 run_runlevel_experiment.py --chat N --bars reports/calibration_bars_<...>.jsonl [--sections bars,real,inj,tier2]   # run-level view (14p4-iv); writes runlevel_*.npz incl. the PER-BAR DUMP -> reports/
 python3 run_calibration_stats.py --chat N --dump-bars   # read-only calibration statistics + per-bar dump for the synthetic worlds (14p4-ii) -> reports/
 ```
 

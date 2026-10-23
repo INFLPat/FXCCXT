@@ -1,4 +1,4 @@
-# version: 261011
+# version: 261021
 # Local/generated market data - never committed.
 # Real market data has redistribution restrictions and the Claude GitHub
 # integration can't usefully read binary files anyway. Re-upload the .db directly to
@@ -30,6 +30,7 @@ fx_trader/logs/*.jsonl
 fx_trader/reports/*.json
 fx_trader/reports/*.txt
 fx_trader/reports/*.jsonl
+fx_trader/reports/*.npz
 
 # Local chat-start files (utilities/chat_preflight.py): machine_profile.md holds account tiers and local paths; chat_start.txt is regenerated each run
 fx_trader/local/
