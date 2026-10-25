@@ -543,6 +543,30 @@ Evidence labels as in 4f. Code: `currency_graph/runlevel.py` (numpy engine, stdl
 
 **4l.7 For later chats.** The core in `runlevel.py` takes any 2-D array of residual series with NaN gaps and any per-bar scale, so a larger universe or crypto only needs an adapter that supplies cycle residuals (from `enumerate_cycles` / `cycle_basis`) and scales: crypto bars have bid = ask, so only the absolute and robust-z scales and the normalisation-free statistics apply there (spread-based scales stay undefined). `run_runlevel_experiment.py` itself is specific to the 8-pair hub / arm structure (4h.3) and will need that adapter when the universe grows. Trailing statistics are causal and can be re-implemented incrementally for the live runner (L1); centred ones never. Persistent-offset flags belong in the consumer flag set (Strength fault rule): carry them once a run-level rule is eventually chosen.
 
+### 4l.8 Patch -ivc (261023): injection geometry, spacing, buckets, live fills, clustered CIs, hysteresis, gap policies
+
+SUPERSEDES / CORRECTS (the repo wins; read 4l.1-4l.7 with these changes):
+- The close-out patch is **-ivd**, not -ivc (4l.1). -ivc is this build patch.
+- r1real real-section numbers are SUPERSEDED for fills half / third / min3 (engine defect: phantom flags on nonexistent bars just past a gap; fixed by `_gate` in `iter_stats`, statistics are NaN where their own bar is missing). Re-run `real` (tag r2real). Full-fill columns were unaffected.
+- Injection geometry in 4l.3 / 4l.5 (PRE48 + D + POST48 all inside one <=120-bar ref stretch) is REPLACED: it gave zero trials for D>=48 and ~1 start per week for D=24. New rule below.
+- `--stride` is no longer a per-class list thinning; it is a minimum spacing in HOURS within a start-hour class (default 24).
+
+INJECTION GEOMETRY (clip-and-mask): the D-bar run must lie inside one ref stretch; the 48 bars before and 48 after are used as far as the stretch provides them (NaN elsewhere), so the fill rules matter and stretches can host 48 / 72 h runs. Strata stored for the HEADLINE columns: start-hour class and pre-context bucket (0-5 / 6-11 / 12-23 / 24-47 / 48+ bars). The short buckets are post-gap-like onsets: STORED, NOT ANALYSED (14p4-v item 5). All four fills are live in injection (`--inj-fills`, must include full). Headline CIs: stretch-clustered bootstrap (resample ref stretches with replacement, per duration) of the detection rate and of the mean first-flag index among detected trials, final checkpoint only (`ci_*` arrays; `--boot 0` disables). Windows of long runs overlap, so binomial CIs would be too narrow.
+
+HYSTERESIS (built, not chosen): latch enters at ratio >= thr, stays ON while ratio >= frac x thr, frac in `--hyst-exit` (default 0.75, 0.5; the plain flag 1.0 is always computed). First-flag time and detection are identical to the plain flag by construction; run length, run counts, cover and tail differ. Real pass: every column x every policy x {1.0, 0.75, 0.5}. Injection: cover / tail under hysteresis for the HEADLINE columns only (`hy75_cover`, `hy50_tail`, clean `chy*`). The latch state starts at the first evaluated bar of a trial (no carry-in from the pre-context).
+
+GAP POLICIES (built, not chosen), `--policies` for the real pass (default mask_reset, all_chron): mask_reset = ref population reset at any gap; all_chron = all bars reset at any gap; mask_carryN / all_carryN = gaps of up to N missing bars are bridged with NaN placeholder bars (windows keep real-time length, fills decide); mask_barindex / all_barindex = gaps ignored (one segment), DIAGNOSTIC ONLY, they violate 4j.5. Injection always uses the mask_reset scales (stretch-local).
+
+NEW ARTIFACT AXES (meta JSON `real.axes` / `inj.arrays` are the authority): real arrays gain leading [policy, hyst] axes; bars npz schema 2 adds ctx_bucket, pos_in_stretch, bars_to_stretch_end, and roll_<policy> / rz_<policy> per policy; inj arrays add h_* (class), hb_* (bucket), hy*, ci_*, n_trials_stretch, tail_valid*, trial_* table. Per-bar dump still exists: `run_runlevel_experiment.load_bars_npz()`; re-upload it, do not recompute.
+
+GUARD: `real_run_check` now flags `dump_route_ok` (median d_JPY within 0.15 bps of the 4i.11 deviation) and the text report prints MISMATCH if not.
+
+TIER 2: same start geometry as injection (spacing, stretch clip). R3 still cannot fire for D=3 (a trailing W=12 median needs >= 6 offset bars); the 24 Tier 2 cells use D >= 6.
+
+TESTS: tests/test_runlevel.py (engine vs stdlib oracles, latch vs state machine, run rule, pack_layout hand values) and tests/test_run_runlevel_experiment.py (geometry, pools, injection, real pass, config, integration on the synthetic DB). The numpy parts were run by Claude on stubs (sandbox); the integration test and the real-repo import path were NOT run before delivery.
+
+RUN ORDER: smoke (docstring of run_runlevel_experiment.py), `real` (tag r2real), optional extra policies (tag r2pol), injection per path in parallel terminals (tags r2injHUB / r2injCHF / r2injEUR / r2injJPY), then `tier2`. Close-out ledger rule is applied in -ivd.
+
 ## 5. HOLZMANN REVIEW
 
 Applied project-wide. New files should be written to the same standard:

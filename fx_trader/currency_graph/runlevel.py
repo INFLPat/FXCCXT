@@ -1,4 +1,4 @@
-# version: 261021
+# version: 261023
 """
 currency_graph/runlevel.py
 
@@ -21,6 +21,9 @@ STATISTICS (all computed; none chosen):
 WINDOWS: trailing = bars t-W+1..t; centred = bars t-W//2..t+W//2 (HINDSIGHT:
   never to be fed to a consumer). FILL = minimum valid bars in the window:
   full (nominal size), half, third, min3 (expanding; at least 3 bars).
+  A statistic is NaN wherever the bar ITSELF is missing (iter_stats gates it),
+  so a flag can never sit on a bar that does not exist (fixed 261023: the
+  half / third / min3 fills used to produce such flags just past a gap).
 INPUTS: raw (bps), norm (x / path spread), none (signpers is sign-only).
 SCALES (raw input): path (current path summed spread), roll (trailing median
   of path spread), bar (bar mean pair spread), hour (same-hour trailing
@@ -28,10 +31,19 @@ SCALES (raw input): path (current path summed spread), roll (trailing median
   series). Crypto bars have no spread: spread-based scales are then undefined
   and only abs / rz / norm-free statistics apply.
 FLAG: |statistic| / scale >= threshold (NaN anywhere = not flagged).
+HYSTERESIS (latch): enter at ratio >= thr, stay ON while ratio >= frac x thr
+  (HYST_EXIT = 0.75 and 0.5; 1.0 = the plain flag). First-flag time is
+  identical to the plain flag; run length and run counts differ.
 Run counting: a flagged bar starts a run unless a flagged bar lies within the
   previous `gap` bars (same rule as run_world_experiment.count_runs).
+GAP POLICIES (pack_layout): rows of a population are laid on a time grid.
+  carry = 0: reset (NaN separator) at any missing bar; carry = g: gaps of up to
+  g missing bars are bridged by NaN placeholder bars (the window keeps its
+  real-time length; the fill rules decide); carry = None: bar-index packing,
+  gaps ignored (DIAGNOSTIC ONLY - breaks CONTEXT_HANDOFF 4j.5).
 EWMA/CUSUM start at column 0 of the array given (segment start in real
-  chronology; trial start in injection, so their state has PRE bars of warm-up).
+  chronology; trial start in injection, so their state has up to 48 bars of
+  warm-up, fewer when the stretch gives less context).
 Streaming note: the trailing statistics are causal and can be rewritten
 incrementally for live use (L1); centred ones are batch-only.
 """
@@ -63,6 +75,7 @@ SEP = 50                      # NaN separator between segments (>= max window ba
 BLOCK_LENGTHS = (1, 3, 6, 12, 24, 48)
 BLOCK_LABELS = tuple(str(x) for x in BLOCK_LENGTHS) + ("mixed",)
 HEADLINE_W = (6, 12, 24)
+HYST_EXIT = (0.75, 0.5)
 
 Spec = namedtuple("Spec", "sid stat param fill caus inp")
 Group = namedtuple("Group", "spec scale thr col0 headline")
@@ -303,9 +316,15 @@ def column_ids(specs, groups) -> list:
 
 
 # ------------------------------------------------------------ statistics
+def _gate(S, miss):
+    """NaN wherever the bar itself is missing."""
+    return np.where(miss, np.nan, S)
+
+
 def iter_stats(Xs: dict, specs, t0: int, t1: int, pad: bool):
     """Yields (spec_index, array (n, t1 - t0)). Xs = {'raw': (n, T), 'norm': (n, T)}.
-    Windowed statistics sharing a window are sorted once."""
+    Windowed statistics sharing a window are sorted once. Every statistic is NaN
+    where its own bar is missing."""
     assert specs, "no specs"
     win_groups, seq_groups = {}, {}
     for i, sp in enumerate(specs):
@@ -318,6 +337,7 @@ def iter_stats(Xs: dict, specs, t0: int, t1: int, pad: bool):
         back, fwd = window_bounds(W, caus)
         nominal = back + fwd + 1
         V = _win_view(X, back, fwd, t0, t1, pad)
+        miss = np.isnan(X[:, t0:t1])
         need_order = any(specs[i].stat in WINDOWED for i in idxs)
         need_sign = any(specs[i].stat == SIGN_STAT for i in idxs)
         o = order_stats(V) if need_order else None
@@ -325,14 +345,15 @@ def iter_stats(Xs: dict, specs, t0: int, t1: int, pad: bool):
         for i in idxs:
             sp = specs[i]
             if sp.stat == SIGN_STAT:
-                yield i, apply_fill(sg["sign"], sg["cnt"], nominal, sp.fill)
+                yield i, _gate(apply_fill(sg["sign"], sg["cnt"], nominal, sp.fill), miss)
             else:
-                yield i, apply_fill(o[sp.stat], o["cnt"], nominal, sp.fill)
+                yield i, _gate(apply_fill(o[sp.stat], o["cnt"], nominal, sp.fill), miss)
     for (stat, inp, param), idxs in seq_groups.items():
         X = np.asarray(Xs[inp], float)
         full = ewma(X, param) if stat == "ewma" else cusum(X, param)
+        miss = np.isnan(X[:, t0:t1])
         for i in idxs:
-            yield i, full[:, t0:t1]
+            yield i, _gate(full[:, t0:t1], miss)
 
 
 def ratio_array(S, scale: str, scale_arr):
@@ -343,6 +364,29 @@ def ratio_array(S, scale: str, scale_arr):
         with np.errstate(invalid="ignore", divide="ignore"):
             return np.where(scale_arr > 0, a / scale_arr, np.nan)
     return a
+
+
+# ----------------------------------------------------------- hysteresis
+def latch(ent, ext):
+    """Hysteresis latch along the last axis. ent = enter condition, ext = stay
+    condition (ent is treated as implying ext). True at t iff ext[t] and some
+    s <= t has ent[s] with ext[s..t] all True."""
+    ent = np.asarray(ent, bool)
+    ext = np.asarray(ext, bool)
+    assert ent.shape == ext.shape, "ent / ext shape mismatch"
+    T = ent.shape[-1]
+    if T == 0:
+        return ent.copy()
+    ent = ent & ext
+    idx = np.arange(T, dtype=np.int32)
+    prev = np.zeros(ext.shape, bool)
+    prev[..., 1:] = ext[..., :-1]
+    start = ext & ~prev
+    comp = np.maximum.accumulate(np.where(start, idx, np.int32(-1)), axis=-1)
+    cs = np.cumsum(ent, axis=-1, dtype=np.int32)
+    before = np.take_along_axis(cs, np.maximum(comp - 1, 0), axis=-1)
+    before = np.where(comp > 0, before, 0)
+    return ext & ((cs - before) > 0)
 
 
 # ----------------------------------------------------------- run counting
@@ -407,3 +451,41 @@ def draw_blocks(segs, label_len, B: int, rng) -> tuple:
         S[m] = s0[si] + (u - (cum[si] - wgt[si]))
         G[m] = si
     return S, Ls.astype(int), G
+
+
+# ------------------------------------------------------------ gap policies
+def pack_layout(keep, epoch, carry, step: int, sep: int = SEP) -> tuple:
+    """Lay the kept rows of a chronological table on a packed time grid.
+    keep: bool (N,) rows of the population. epoch: int seconds (N,). carry: max number
+    of missing bars bridged inside a segment by NaN placeholder bars (0 = reset at any
+    gap), or None = bar-index packing (gaps ignored, one segment; DIAGNOSTIC ONLY).
+    Returns (pos (N,) packed index or -1, M packed length, segments [(start, length)])."""
+    keep = np.asarray(keep, bool)
+    epoch = np.asarray(epoch, np.int64)
+    assert keep.shape == epoch.shape and keep.ndim == 1, "keep / epoch must be 1-D and aligned"
+    assert step > 0 and (carry is None or carry >= 0), "bad step or carry"
+    pos = np.full(len(keep), -1, np.int64)
+    p, last, segs = 0, None, []
+    for i in range(len(keep)):
+        if not keep[i]:
+            continue
+        ep = int(epoch[i])
+        if last is None:
+            new = True
+        elif carry is None:
+            new = False
+        else:
+            assert ep - last >= step, "epochs must increase by at least one bar"
+            miss = (ep - last) // step - 1
+            new = miss > carry
+            if not new:
+                p += miss
+        if new:
+            if segs:
+                p += sep
+            segs.append([p, 0])
+        pos[i] = p
+        segs[-1][1] = p - segs[-1][0] + 1
+        p += 1
+        last = ep
+    return pos, p, [tuple(s) for s in segs]

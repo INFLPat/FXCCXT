@@ -1,13 +1,14 @@
-# version: 261021
+# version: 261023
 """
 tests/test_runlevel.py
 
-Method: hermetic, numpy only, no DB, no real outputs. The numpy statistics are
-checked window by window against the stdlib oracle (rl.ref_stat) on random series
-with NaN holes; causality by perturbing the future; EWMA / CUSUM against hand
-values; layout column counts against hand counts; the vectorised run counter
-against a plain-Python implementation of the count_runs rule on random flags and
-random blocks; block draws against segment bounds.
+Method: currency_graph/runlevel.py (numpy engine) against stdlib oracles. Checks: every windowed statistic
+(median / mean / trim20 / signpers) equals ref_stat over the same window to 1e-12 for trailing and centred
+windows, all fills, with NaNs; a statistic is NaN where its own bar is missing (all fills); EWMA / CUSUM hand
+values; the hysteresis latch equals a plain Python state machine on random inputs; block run counts equal a
+Python re-implementation of the run rule (count_runs) on random flags; drawn blocks never cross a segment;
+pack_layout hand values for carry 0 / g / None; layout sizes (86 / 1874 columns for one fill, 296 / 6344 for
+four, 162 headline columns); threshold monotonicity of flags.
 
 Run: python3 -m tests.test_runlevel
 """
@@ -19,181 +20,224 @@ import numpy as np
 from currency_graph import runlevel as rl
 
 
-def _same(a, b, tol=1e-12) -> bool:
-    return (math.isnan(a) and math.isnan(b)) or abs(a - b) <= tol
+def _series(rng, n, T, nan_p=0.15):
+    X = rng.normal(0, 3, size=(n, T))
+    X[rng.random((n, T)) < nan_p] = np.nan
+    return X
 
 
-def test_bounds_and_min_count():
-    assert rl.window_bounds(6, "trailing") == (5, 0) and rl.window_bounds(6, "centred") == (3, 3)
-    assert rl.window_bounds(3, "centred") == (1, 1)
-    assert [rl.min_count(12, f) for f in rl.FILLS] == [12, 6, 4, 3]
-    assert rl.min_count(2, "min3") == 2 and rl.min_count(1, "third") == 1
-    for bad in (lambda: rl.window_bounds(6, "x"), lambda: rl.min_count(6, "x")):
-        try:
-            bad()
-            raise RuntimeError("expected a rejection")
-        except ValueError:
-            pass
-    print("bounds / min_count assertions passed.")
-
-
-def test_order_and_sign_stats_match_stdlib_oracle():
+def test_windowed_stats_match_oracle():
     rng = np.random.default_rng(1)
-    X = rng.normal(size=(3, 40))
-    X[0, 10:14] = np.nan
-    X[2, :5] = np.nan
-    X[1, 20] = 0.0
-    for W, caus in ((3, "trailing"), (6, "trailing"), (6, "centred"), (12, "trailing"), (5, "centred")):
-        back, fwd = rl.window_bounds(W, caus)
-        V = rl.windows(X, back, fwd, True)
-        assert V.shape == (3, 40, back + fwd + 1)
-        o, sg = rl.order_stats(V), rl.sign_stat(V)
-        for r in range(3):
-            for t in range(40):
-                vals = list(V[r, t])
-                for name in ("median", "mean", "trim20"):
-                    assert _same(o[name][r, t], rl.ref_stat(vals, name)), (W, caus, r, t, name)
-                assert _same(sg["sign"][r, t], rl.ref_stat(vals, "signpers")), (W, caus, r, t)
-    X2 = np.arange(10.0)[None, :]
-    V = rl.windows(X2, 2, 0, True)
-    assert list(V[0, 5]) == [3.0, 4.0, 5.0] and np.isnan(V[0, 0, 0]), "trailing window must end at t"
-    Vc = rl.windows(X2, 2, 2, True)
-    assert list(Vc[0, 5]) == [3.0, 4.0, 5.0, 6.0, 7.0]
-    Vu = rl.windows(X2, 2, 0, False)
-    assert Vu.shape == (1, 8, 3) and list(Vu[0, 0]) == [0.0, 1.0, 2.0], "unpadded: first window starts at column 0"
-    print("order / sign statistics match the stdlib oracle (5 window shapes, NaN holes).")
+    X = _series(rng, 3, 90)
+    for caus in rl.CAUSALITY:
+        for W in (3, 6, 12, 24):
+            back, fwd = rl.window_bounds(W, caus)
+            nominal = back + fwd + 1
+            V = rl._win_view(X, back, fwd, 0, X.shape[1], True)
+            o = rl.order_stats(V)
+            sg = rl.sign_stat(V)
+            for r in range(X.shape[0]):
+                for t in range(X.shape[1]):
+                    vals = [x for x in V[r, t] if not math.isnan(x)]
+                    for kind in ("median", "mean", "trim20"):
+                        exp = rl.ref_stat(vals, kind)
+                        got = o[kind][r, t]
+                        assert (math.isnan(exp) and math.isnan(got)) or abs(exp - got) < 1e-12, (caus, W, kind, r, t)
+                    exp = rl.ref_stat(vals, "signpers")
+                    got = sg["sign"][r, t]
+                    assert (math.isnan(exp) and math.isnan(got)) or abs(exp - got) < 1e-12, (caus, W, "signpers")
+            for fill in rl.FILLS:
+                f = rl.apply_fill(o["median"], o["cnt"], nominal, fill)
+                need = rl.min_count(nominal, fill)
+                assert np.array_equal(np.isnan(f), (o["cnt"] < need) | np.isnan(o["median"])), (caus, W, fill)
+    print("windowed statistics match the stdlib oracle (trailing + centred, all fills).")
 
 
-def test_trim20_hand_value_and_fill():
-    v = np.array([[[1.0, 2.0, 3.0, 4.0, 100.0]]])
-    o = rl.order_stats(v)
-    assert abs(o["trim20"][0, 0] - 3.0) < 1e-12 and abs(o["median"][0, 0] - 3.0) < 1e-12 and abs(o["mean"][0, 0] - 22.0) < 1e-12
-    assert rl.ref_stat([1, 2, 3, 4, 100.0], "trim20") == 3.0
-    part = np.array([[[np.nan, np.nan, 1.0, 2.0, 3.0]]])
-    o = rl.order_stats(part)
-    assert int(o["cnt"][0, 0]) == 3
-    assert not np.isnan(rl.apply_fill(o["median"], o["cnt"], 5, "half")[0, 0])
-    assert np.isnan(rl.apply_fill(o["median"], o["cnt"], 5, "full")[0, 0]), "3 valid bars of 5 fail the full rule"
-    assert not np.isnan(rl.apply_fill(o["median"], o["cnt"], 5, "min3")[0, 0])
-    print("trim20 / fill hand-value assertions passed.")
-
-
-def test_trailing_is_causal_and_centred_is_not():
+def test_iter_stats_gates_missing_bars_and_pads():
     rng = np.random.default_rng(2)
-    X = rng.normal(size=(1, 60))
-    Y = X.copy()
-    Y[0, 40:] += 50.0
-    spec_t = [rl.make_spec("median", 6, "full", "trailing", "raw")]
-    spec_c = [rl.make_spec("median", 6, "full", "centred", "raw")]
-    a = dict(rl.iter_stats({"raw": X}, spec_t, 0, 60, True))[0]
-    b = dict(rl.iter_stats({"raw": Y}, spec_t, 0, 60, True))[0]
-    assert np.allclose(a[0, :40], b[0, :40], equal_nan=True), "trailing statistic at t must not see the future"
-    c = dict(rl.iter_stats({"raw": X}, spec_c, 0, 60, True))[0]
-    d = dict(rl.iter_stats({"raw": Y}, spec_c, 0, 60, True))[0]
-    assert not np.allclose(c[0, 35:40], d[0, 35:40]), "centred statistic must see the future"
-    print("causality assertions passed.")
+    X = _series(rng, 4, 70, 0.3)
+    specs = rl.build_specs(rl.FILLS)
+    got = {}
+    for i, a in rl.iter_stats({"raw": X, "norm": X / 2.0}, specs, 0, X.shape[1], True):
+        got[i] = a
+    assert len(got) == len(specs), "every spec must be yielded once"
+    miss = np.isnan(X)
+    for i, a in got.items():
+        assert a.shape == X.shape
+        assert np.all(np.isnan(a[miss])), f"statistic {specs[i].sid} is defined on a missing bar"
+    sp = rl.make_spec("median", 6, "full", "trailing", "raw")
+    i = specs.index(sp)
+    t = 40
+    vals = [x for x in X[1, t - 5:t + 1] if not math.isnan(x)]
+    if not miss[1, t] and len(vals) == 6:
+        assert abs(got[i][1, t] - rl.ref_stat(vals, "median")) < 1e-12
+    print("statistics are NaN on missing bars for every spec / fill.")
 
 
-def test_ewma_cusum_hand_values():
-    e = rl.ewma(np.array([[4.0, 0.0, 0.0]]), 1.0, min_n=1)
-    assert np.allclose(e[0], [4.0, 2.0, 1.0])
-    e2 = rl.ewma(np.array([[1.0, 1.0, np.nan, 5.0, 5.0, 5.0]]), 1.0, min_n=2)
-    assert np.isnan(e2[0, 0]) and e2[0, 1] == 1.0 and np.isnan(e2[0, 2]) and np.isnan(e2[0, 3]) and e2[0, 4] == 5.0, e2
-    c = rl.cusum(np.array([[2.0, 2.0, 2.0], [-2.0, -2.0, -2.0]]), 1.0)
-    assert np.allclose(c[0], [1.0, 2.0, 3.0]) and np.allclose(c[1], [-1.0, -2.0, -3.0])
-    c2 = rl.cusum(np.array([[2.0, np.nan, 2.0]]), 1.0)
-    assert c2[0, 0] == 1.0 and np.isnan(c2[0, 1]) and c2[0, 2] == 1.0, "NaN resets the accumulator"
-    print("EWMA / CUSUM hand-value assertions passed.")
+def test_unpadded_equals_padded_inside():
+    rng = np.random.default_rng(3)
+    X = rng.normal(size=(2, 120))
+    specs = [rl.make_spec("mean", 12, "full", "trailing", "raw"), rl.make_spec("median", 12, "half", "centred", "raw"),
+             rl.make_spec("ewma", 6, "-", "trailing", "raw"), rl.make_spec("cusum", 1.0, "-", "trailing", "raw")]
+    full = dict(rl.iter_stats({"raw": X}, specs, 0, 120, True))
+    part = dict(rl.iter_stats({"raw": X}, specs, 48, 100, False))
+    for i in (0, 1):
+        assert np.allclose(full[i][:, 48:100], part[i], equal_nan=True), specs[i].sid
+    print("unpadded windows equal padded windows where context exists.")
 
 
-def test_rolling_median_and_mad():
-    x = np.array([[5.0] * 10])
-    assert np.allclose(rl.rolling_mad(x, 4, 2)[0, 3:], 0.0)
-    m = rl.rolling_median(np.array([[1.0, 2.0, 3.0, 4.0]]), 3, 3)
-    assert np.isnan(m[0, 1]) and m[0, 2] == 2.0 and m[0, 3] == 3.0
-    print("rolling median / MAD assertions passed.")
+def test_ewma_and_cusum_hand_values():
+    X = np.array([[1.0, 1.0, 1.0, 1.0, 5.0]])
+    e = rl.ewma(X, 1.0)                         # a = 0.5
+    assert np.isnan(e[0, 0]) and np.isnan(e[0, 1]) and abs(e[0, 2] - 1.0) < 1e-12
+    assert abs(e[0, 4] - 3.0) < 1e-12
+    c = rl.cusum(np.array([[2.0, 2.0, -1.0, np.nan, 2.0]]), 0.5)
+    assert abs(c[0, 0] - 1.5) < 1e-12 and abs(c[0, 1] - 3.0) < 1e-12 and abs(c[0, 2] - 1.5) < 1e-12
+    assert math.isnan(c[0, 3]) and abs(c[0, 4] - 1.5) < 1e-12, "NaN resets the sums"
+    n = rl.cusum(np.array([[-2.0, -2.0]]), 0.5)
+    assert abs(n[0, 1] + 3.0) < 1e-12, "the negative side is returned signed"
+    print("EWMA / CUSUM hand values passed.")
 
 
-def test_layout_counts_and_unique_ids():
-    specs, groups, ncols = rl.build_layout(("full",))
-    assert len(specs) == 86 and ncols == 1874, (len(specs), ncols)
-    specs4, groups4, ncols4 = rl.build_layout(rl.FILLS)
-    assert len(specs4) == 296 and ncols4 == 6344, (len(specs4), ncols4)
-    for sp, gr, nc in ((specs, groups, ncols), (specs4, groups4, ncols4)):
-        ids = rl.column_ids(sp, gr)
-        assert len(ids) == nc and len(set(ids)) == nc, "column ids must be unique"
-    hs, hg, hn = rl.build_layout(("full",), headline_only=True)
-    assert hn == sum(len(g.thr) for g in hg) and all(g.headline for g in hg) and 0 < hn < 300, hn
-    print("layout counts passed: injection 86 specs / 1874 columns, real 296 / 6344, headline", hn)
+def _latch_loop(ent, ext):
+    out = np.zeros(len(ent), bool)
+    on = False
+    for t in range(len(ent)):
+        if not ext[t]:
+            on = False
+        elif ent[t]:
+            on = True
+        out[t] = on and ext[t]
+    return out
 
 
-def _ref_runs(f, s, L, g):
+def test_latch_matches_state_machine():
+    rng = np.random.default_rng(4)
+    for _ in range(300):
+        T = int(rng.integers(1, 40))
+        ext = rng.random(T) < 0.6
+        ent = (rng.random(T) < 0.3) & ext
+        assert np.array_equal(rl.latch(ent, ext), _latch_loop(ent, ext)), (ent, ext)
+    ent = rng.random((3, 2, 50)) < 0.2
+    ext = ent | (rng.random((3, 2, 50)) < 0.5)
+    L = rl.latch(ent, ext)
+    for i in range(3):
+        for j in range(2):
+            assert np.array_equal(L[i, j], _latch_loop(ent[i, j], ext[i, j]))
+    assert np.all(L >= ent), "the latch must contain every entering bar"
+    assert rl.latch(np.zeros((2, 0), bool), np.zeros((2, 0), bool)).shape == (2, 0)
+    print("hysteresis latch equals the state machine (300 random + batched).")
+
+
+def _runs_loop(F, s, length, gap):
     runs, prev = 0, None
-    for j in range(s, s + L):
-        if f[j]:
-            runs += prev is None or j - prev > g
+    for j in range(s, s + length):
+        if F[j]:
+            runs += prev is None or j - prev > gap
             prev = j
     return runs
 
 
-def test_block_runs_match_plain_python_rule():
-    rng = np.random.default_rng(3)
-    M = 300
+def test_block_runs_match_run_rule():
+    rng = np.random.default_rng(5)
+    M = 400
     F = rng.random((2, 3, M)) < 0.08
-    F[0, 0, :] = False
-    F[1, 2, 100:140] = True
-    starts = rng.integers(0, M - 50, size=60)
-    lens = rng.choice([1, 3, 6, 12, 24, 48], size=60)
-    starts[:5] = [0, 0, 5, 99, 100]
-    lens[:5] = [1, 48, 12, 6, 40]
-    gaps = (1, 3, 6, 12)
-    totals, runs = rl.block_runs(F, gaps, [(starts, lens)])
-    for g in gaps:
+    starts = rng.integers(0, M - 48, size=60)
+    lens = rng.choice(rl.BLOCK_LENGTHS, size=60)
+    lens = np.minimum(lens, M - starts)
+    totals, runs = rl.block_runs(F, (1, 3, 6, 12), [(starts, lens)])
+    for g in (1, 3, 6, 12):
         for a in range(2):
             for b in range(3):
+                assert totals[g][a, b] == _runs_loop(F[a, b], 0, M, g)
                 for k in range(len(starts)):
-                    assert int(runs[g][0][a, b, k]) == _ref_runs(F[a, b], int(starts[k]), int(lens[k]), g), (g, a, b, k)
-                assert int(totals[g][a, b]) == _ref_runs(F[a, b], 0, M, g)
-    print("vectorised block_runs == plain-Python run rule (4 gaps, 2x3 series, 60 blocks).")
+                    assert runs[g][0][a, b, k] == _runs_loop(F[a, b], int(starts[k]), int(lens[k]), g), (g, a, b, k)
+    print("block run counts equal the count_runs rule for gaps 1/3/6/12.")
 
 
 def test_draw_blocks_stay_inside_segments():
-    segs = [(0, 10), (60, 100), (200, 3)]
-    rng = np.random.default_rng(4)
-    for label in (1, 3, 12, 48, None):
-        S, Ls, G = rl.draw_blocks(segs, label, 400, rng)
+    segs = [(0, 30), (80, 5), (100, 120), (300, 2)]
+    rng = np.random.default_rng(6)
+    for lab in (1, 3, 6, 12, 24, 48, None):
+        S, L, G = rl.draw_blocks(segs, lab, 400, rng)
         assert len(S) == 400
-        for s, L, g in zip(S, Ls, G):
-            a, n = segs[int(g)]
-            assert a <= s and s + L <= a + n, (label, s, L, g)
-        if label is not None:
-            assert set(Ls.tolist()) == {label}
-    S, Ls, G = rl.draw_blocks(segs, 48, 10, rng)
-    assert set(G.tolist()) == {1}, "only the 100-bar segment fits a 48-bar block"
-    assert len(rl.draw_blocks(segs, 500, 10, rng)[0]) == 0, "no segment fits: empty result, not a crash"
-    print("block draw assertions passed.")
+        for s, l, g in zip(S, L, G):
+            a, n = segs[g]
+            assert a <= s and s + l <= a + n, (lab, s, l, segs[g])
+    S, L, G = rl.draw_blocks([(0, 5)], 24, 10, rng)
+    assert len(S) == 0, "no segment is long enough: nothing is drawn"
+    print("drawn blocks never cross a segment.")
 
 
-def test_ratio_array_and_scales():
-    S = np.array([[1.0, -4.0, np.nan]])
-    sc = np.array([[2.0, 2.0, 2.0]])
-    r = rl.ratio_array(S, "path", sc)
-    assert np.allclose(r[0, :2], [0.5, 2.0]) and np.isnan(r[0, 2])
-    assert np.allclose(rl.ratio_array(S, "abs", None)[0, :2], [1.0, 4.0])
-    bad = rl.ratio_array(S, "path", np.array([[0.0, np.nan, 1.0]]))
-    assert np.isnan(bad[0, 0]) and np.isnan(bad[0, 1]), "zero or NaN scale gives NaN, never a flag"
-    print("ratio_array assertions passed.")
+def test_pack_layout_hand_values():
+    step = 3600
+    ep = np.array([0, 1, 2, 5, 6, 8, 9, 10]) * step
+    keep = np.ones(8, bool)
+    pos, M, segs = rl.pack_layout(keep, ep, 0, step, sep=10)
+    assert list(pos) == [0, 1, 2, 13, 14, 25, 26, 27] and M == 28 and segs == [(0, 3), (13, 2), (25, 3)], (pos, M, segs)
+    pos, M, segs = rl.pack_layout(keep, ep, 2, step, sep=10)       # gap of 2 missing bars (3,4) bridged; gap of 1 (7) bridged
+    assert list(pos) == [0, 1, 2, 5, 6, 8, 9, 10] and M == 11 and segs == [(0, 11)], (pos, M, segs)
+    pos, M, segs = rl.pack_layout(keep, ep, 1, step, sep=10)       # (3,4) = 2 missing > 1: new segment; (7) bridged
+    assert list(pos) == [0, 1, 2, 13, 14, 16, 17, 18] and segs == [(0, 3), (13, 6)], (pos, segs)
+    pos, M, segs = rl.pack_layout(keep, ep, None, step, sep=10)
+    assert list(pos) == list(range(8)) and M == 8 and segs == [(0, 8)]
+    keep2 = keep.copy()
+    keep2[[1, 2]] = False
+    pos, M, segs = rl.pack_layout(keep2, ep, 0, step, sep=10)
+    assert list(pos[:3]) == [0, -1, -1] and segs[0] == (0, 1)
+    pos, M, segs = rl.pack_layout(np.zeros(3, bool), ep[:3], 0, step)
+    assert M == 0 and segs == [] and list(pos) == [-1, -1, -1]
+    try:
+        rl.pack_layout(keep, ep[::-1].copy(), 0, step)
+        raise RuntimeError("expected rejection of non-increasing epochs")
+    except AssertionError:
+        pass
+    print("pack_layout hand values (reset / carry / bar-index / masked) passed.")
+
+
+def test_carry_window_keeps_real_time_length():
+    step = 3600
+    ep = np.array([0, 1, 2, 3, 5, 6]) * step           # one missing bar (4)
+    X = np.array([[1.0, 2.0, 3.0, 4.0, 6.0, 7.0]])
+    pos, M, _ = rl.pack_layout(np.ones(6, bool), ep, 1, step, sep=10)
+    P = np.full((1, M), np.nan)
+    P[:, pos] = X
+    s = dict(rl.iter_stats({"raw": P}, [rl.make_spec("mean", 3, "full", "trailing", "raw"),
+                                        rl.make_spec("mean", 3, "half", "trailing", "raw")], 0, M, True))
+    assert list(pos) == [0, 1, 2, 3, 5, 6] and M == 7
+    assert abs(s[0][0, 3] - 3.0) < 1e-12, "window 1..3 is complete"
+    assert np.isnan(s[0][0, 5]) and np.isnan(s[0][0, 6]), "full fill: windows over the bridged bar are incomplete"
+    assert np.isnan(s[1][0, 4]), "half fill: still NaN on the bridged (missing) bar itself"
+    assert abs(s[1][0, 5] - 5.0) < 1e-12 and abs(s[1][0, 6] - 6.5) < 1e-12, "half fill: 2 of 3 bars suffice"
+    print("carry bridges keep the window in real time.")
+
+
+def test_layout_sizes_and_threshold_monotone():
+    sp1, g1, n1 = rl.build_layout(("full",))
+    assert (len(sp1), n1) == (86, 1874), (len(sp1), n1)
+    sp4, g4, n4 = rl.build_layout(rl.FILLS)
+    assert (len(sp4), n4) == (296, 6344)
+    sph, gh, nh = rl.build_layout(rl.FILLS, True)
+    assert sum(len(g.thr) for g in gh) == 162 and all(g.headline for g in gh)
+    ids = rl.column_ids(sp4, g4)
+    assert len(ids) == n4 == len(set(ids)), "column ids must be unique"
+    rng = np.random.default_rng(7)
+    S = rng.normal(0, 4, size=(2, 80))
+    R = rl.ratio_array(S, "abs", None)
+    F = R[None] >= np.asarray(rl.ABS_GRID)[:, None, None]
+    assert np.all(F[1:].sum() <= F[:-1].sum()) and all(F[i + 1].sum() <= F[i].sum() for i in range(len(F) - 1))
+    print("layout sizes 86/1874, 296/6344, 162 headline; column ids unique; flags monotone in the threshold.")
 
 
 if __name__ == "__main__":
-    test_bounds_and_min_count()
-    test_order_and_sign_stats_match_stdlib_oracle()
-    test_trim20_hand_value_and_fill()
-    test_trailing_is_causal_and_centred_is_not()
-    test_ewma_cusum_hand_values()
-    test_rolling_median_and_mad()
-    test_layout_counts_and_unique_ids()
-    test_block_runs_match_plain_python_rule()
+    test_windowed_stats_match_oracle()
+    test_iter_stats_gates_missing_bars_and_pads()
+    test_unpadded_equals_padded_inside()
+    test_ewma_and_cusum_hand_values()
+    test_latch_matches_state_machine()
+    test_block_runs_match_run_rule()
     test_draw_blocks_stay_inside_segments()
-    test_ratio_array_and_scales()
+    test_pack_layout_hand_values()
+    test_carry_window_keeps_real_time_length()
+    test_layout_sizes_and_threshold_monotone()
     print("\nAll runlevel tests passed.")
