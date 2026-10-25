@@ -1,4 +1,4 @@
-<!-- version: 261018 -->
+<!-- version: 261025 -->
 # Research Notes
 
 Read after `CONTEXT_HANDOFF.md` (esp. Section 4f) and `ROADMAP.md`. Purpose: keep what chat 14 learned from the literature, the web and the data so the cartesian chats (14p1, 17p1, 17p2, 18, 19) start with context instead of from scratch and do not re-litigate settled points. Built chat 14, 261003. Add new research as dated sections; fold resolved items into CONTEXT_HANDOFF as decision + evidence.
@@ -152,7 +152,7 @@ Purpose: every analysis that uses survivors or cross-rate results cites this tab
 | Strengths are FX only; crypto pending weight and fault resolution | READ | Any crypto strength use | FX results | after 14p4 |
 | Detector thresholds (A 10 bps, B ratio 1.0, C rule) and Huber starting values (NOISE_RATIO 0.25, MAD floor) are provisional and unvalidated on real data | MEASURED counts, no truth labels | Any use of a flag to mask, weight or size | Raw data, ordinary-bar strengths | 14p4-iii |
 | Synthetic-world assumptions (noise 0.15 x spread, wide-fault error 0.5 x spread, stale = volume 1 and range 0, independent bars and pair spreads); rollover false rates look too high against real counts | INFERRED | Every synthetic detection and false-flag rate, C especially (stale by construction) | Real flag counts, the real INV-4 results | 14p4-iii (14p4-ii measured the real shape: Section 15) |
-| Persistent day-long JPY-arm offsets (six runs, 4-9 bps) | MEASURED (Claude, read-only) ; cause unknown | Cross-rate or relative-strength work on JPY legs in those windows; residual-dynamics benchmarks (chat 24) | Single-instrument survivors (INFERRED) | 14p4-iv (run-level view), 16p1 |
+| Persistent day-long JPY-arm offsets (six runs, 4-9 bps) | MEASURED (Claude, read-only) ; cause unknown | Cross-rate or relative-strength work on JPY legs in those windows; residual-dynamics benchmarks (chat 24) | Single-instrument survivors (INFERRED) | 14p4-iv (run-level view: built and run 261025, Section 18), 14p4-vi (interpretation), 16p1 |
 | Real noise, tail and spread shape differs from the parametric world (noise ratio about 0.065 flat vs 0.15 assumed; absolute noise about constant across pairs at rollover; LOO p99 / MAD sigma 6.5-6.9 and kurtosis 7-29 in ref; log-spread correlation 0.5-0.7) | MEASURED (14p4-ii a1); per-pair noise ratios INFERRED (blended through the cycle space) | Every parametric-world detection rate, false rate and strength error (CONTEXT_HANDOFF 4i.6, 4i.10) | Real flag counts, real INV-4 results, ordinary-bar strengths | 14p4-iii |
 | The 'ref' calibration population is CIRCULAR for A and B (mask built from A flags and B_mean runs) and removes the six JPY runs | READ (4j.2) | Noise-shape and false-rate estimates for A and B from ref | Flag rates from `all`; C (not in the mask) | 14p4-iii, 14p4-iv |
 | Block-resampled results: no blocks across gaps, bars next to gaps under-represented, overlapping blocks | READ (4j.5) | Any block-world false-run rate, run-level result or CI | Single-bar detection rates from per-bar injection | 14p4-iii, 14p4-iv |
@@ -246,5 +246,14 @@ Five of the six match the audit's INV-4 stress days for the GBP_JPY triangle; IN
 6. What the user can supply that saves tokens: an OANDA M1 or S5 pull for the 23 windows (local, token needed); a Dukascopy download of the same pairs and windows; any broker notices you already know of; confirmation of whether Kraken lists GBP/JPY.
 
 **17.5 Other items from the 14p4-iii review (new INV-34).** INV-34: second-source and event check of the 17 fault bars and six JPY-arm runs (above); owner chats 16p1 (second source) and 17p1 (event calendar).
+
+## 18. Chat 14p4-iv findings (261025)
+
+Canonical record: `CONTEXT_HANDOFF.md` Section 4l.9 (runs, results register, ledger, open items); numbers: `RUNLEVEL_RESULTS_14p4-iv.md`. Research-relevant points only (MEASURED unless stated; nothing is chosen; interpretation is chat 14p4-vi):
+- The six JPY-arm runs (17.3) are detectable by a rolling median of the arm path deviation with no tuning: W6 with a 3 bps absolute threshold finds all six at 0-1 h latency; W12 runs 1-5 at 2-4 h (run 6 on a single bar at 0 h); W24 five of six at 8-10 h (run 6, 3.6 bps, is the marginal one). Latency is relative to a detector-defined start (circular), n = 6. Whether the runs are data faults or real dislocations is NOT touched by this chat (INV-34 stays open; only a second source can say).
+- Injected persistent offsets in real chronology: about 1.00 detection at 4 bps and above for runs of 6-24 h or longer (window dependent); 3 bps is borderline; a 1 h offset is never seen by median windows. Detection of a given offset differs by path (EUR easiest, hub hardest at 3 bps).
+- New open items: INV-35: why is detection of a 3 bps offset sign-dependent and path-dependent (JPY +3 bps 0.26 vs -3 bps 0.44; EUR 0.81 vs 0.17; cause not examined; the path deviation is relative to the median of the four paths, INFERRED to matter)? INV-36: are the flags after the six real runs window carry-over or a persisting unmasked offset (injected analogue: 22-26% of the 24 post-run bars still flagged)? Both to 14p4-vi.
+- Gap handling: bridging up to 2 missing bars changes essentially nothing; 60 changes 0.3% of flags; ignoring gaps (bar index) adds about 11% flags, so the weekend structure matters only when gaps are ignored. The hole-length histogram behind "gaps are weekends" was never computed (INFERRED).
+- Method caution for later chats: the effective sample for runs of 24 h or more is about the 236 ref stretches (overlapping windows); the reference chronology holds unknown real runs, so false-run rates are upper bounds; Tier 2 R3 (offset-corrected refit) lowers innocent-currency error for D >= 24 but its top-1 attribution score is measured on the corrected fit and is not comparable.
 
 

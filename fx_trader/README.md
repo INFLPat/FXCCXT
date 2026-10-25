@@ -1,5 +1,5 @@
 <!-- fx_trader_readme (fx_trader/README.md) -->
-<!-- version: 261021 -->
+<!-- version: 261025 -->
 # FX Trader
 
 Backtestable, cost-aware FX + crypto trading pipeline: historical data ->
@@ -32,7 +32,9 @@ fx_trader/
 ├── run_detector_scan.py           # detectors A/B/C over every full sandbox bar, with runs (read-only, 14p4/14p4b)
 ├── run_calibration_stats.py       # read-only calibration statistics for the synthetic fault worlds: per-hour LOO/noise/spread/volume shape, real flag counts on threshold grids, mask, block-start counts (14p4-ii)
 ├── run_world_experiment.py        # fault-injection WORLDS (parametric, empirical, 4 calibrated) x core/family/double/adjacent/blocks scenario sets; grids, histograms, Tier 2 Huber JSONL; report only (14p4-iii)
-├── run_runlevel_experiment.py     # run-level view for persistent arm offsets: numpy statistics x windows x scales x thresholds, injection, real runs, per-bar dump (14p4-iv; built, see CONTEXT_HANDOFF 4l)
+├── run_runlevel_experiment.py     # run-level view for persistent arm offsets: numpy statistics x windows x scales x thresholds, injection, real runs, per-bar dump (14p4-iv; built and run 261025, see CONTEXT_HANDOFF 4l and 4l.9)
+├── run_runlevel_report.py         # read-only: turns the runlevel_* artefacts into RUNLEVEL_RESULTS_14p4-iv.md (+ an all-columns lookup CSV in reports/); report only (14p4-iv close-out)
+├── RUNLEVEL_RESULTS_14p4-iv.md    # committed numbers reference of the 14p4-iv run (ten headline columns, all tables); read this instead of re-running
 ├── requirements-dev.txt           # dev-only: coverage, hypothesis
 ├── run_monitor.py                  # run monitor: duration/metadata JSONL logs into logs/ (gitignored); see its docstring
 ├── fetch_sandbox_data.py           # real FX (OANDA) + USD-crypto (Binance) puller
@@ -105,6 +107,7 @@ python3 run_inv4_attribution.py --chat N                 # INV-4 on the 17 real 
 python3 run_detector_scan.py --chat N                    # detectors A/B/C over every full sandbox bar (read-only) -> reports/
 python3 run_world_experiment.py --chat N --bars reports/calibration_bars_<...>.jsonl [--a1-json ...] [--sandbox-db ...] [--regress-p4db ...]   # fault worlds, report only (14p4-iii) -> reports/
 python3 run_runlevel_experiment.py --chat N --bars reports/calibration_bars_<...>.jsonl [--sections bars,real,inj,tier2]   # run-level view (14p4-iv); writes runlevel_*.npz incl. the PER-BAR DUMP -> reports/
+python3 run_runlevel_report.py --chat 14 --date 261025 --real-tag r2real --inj-tags r2injHUB,r2injCHF,r2injEUR,r2injJPY --t2-tag r2t2 --pol-tag r2pol --out RUNLEVEL_RESULTS_14p4-iv.md --survey-out reports/runlevel_survey_chat14_261025.csv   # regenerate only if runs or columns change (14p4-iv)
 python3 run_calibration_stats.py --chat N --dump-bars   # read-only calibration statistics + per-bar dump for the synthetic worlds (14p4-ii) -> reports/
 ```
 
