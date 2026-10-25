@@ -1,14 +1,16 @@
-# version: 261023
+# version: 261025
 """
 tests/test_runlevel.py
 
 Method: currency_graph/runlevel.py (numpy engine) against stdlib oracles. Checks: every windowed statistic
-(median / mean / trim20 / signpers) equals ref_stat over the same window to 1e-12 for trailing and centred
+(median / mean / trim20 / signpers; 14p4-vi: hl and huber to 1e-10) equals ref_stat over the same window to 1e-12 for trailing and centred
 windows, all fills, with NaNs; a statistic is NaN where its own bar is missing (all fills); EWMA / CUSUM hand
 values; the hysteresis latch equals a plain Python state machine on random inputs; block run counts equal a
 Python re-implementation of the run rule (count_runs) on random flags; drawn blocks never cross a segment;
-pack_layout hand values for carry 0 / g / None; layout sizes (86 / 1874 columns for one fill, 296 / 6344 for
-four, 162 headline columns); threshold monotonicity of flags.
+pack_layout hand values for carry 0 / g / None; layout sizes by formula (14p4-vi dense ladders, hl / huber, four rz
+floors, hl / huber trailing only in the layout: 98 specs / 3746 columns for one fill, 344 / 12968 for four, tiers 585 + 234 = 819 bank columns); threshold
+monotonicity of flags; HL / Huber hand values and robustness; series specs; profiles select statistics only;
+apply_flags equals the in-engine flag and the latch; CORRECT gating; rz scale names.
 
 Run: python3 -m tests.test_runlevel
 """
@@ -36,6 +38,7 @@ def test_windowed_stats_match_oracle():
             V = rl._win_view(X, back, fwd, 0, X.shape[1], True)
             o = rl.order_stats(V)
             sg = rl.sign_stat(V)
+            hl, hu = rl.hl_stat(V), rl.huber_stat(V)
             for r in range(X.shape[0]):
                 for t in range(X.shape[1]):
                     vals = [x for x in V[r, t] if not math.isnan(x)]
@@ -43,6 +46,10 @@ def test_windowed_stats_match_oracle():
                         exp = rl.ref_stat(vals, kind)
                         got = o[kind][r, t]
                         assert (math.isnan(exp) and math.isnan(got)) or abs(exp - got) < 1e-12, (caus, W, kind, r, t)
+                    for kind, arr in (("hl", hl), ("huber", hu)):
+                        exp = rl.ref_stat(vals, kind)
+                        got = arr[r, t]
+                        assert (math.isnan(exp) and math.isnan(got)) or abs(exp - got) < 1e-10, (caus, W, kind, r, t)
                     exp = rl.ref_stat(vals, "signpers")
                     got = sg["sign"][r, t]
                     assert (math.isnan(exp) and math.isnan(got)) or abs(exp - got) < 1e-12, (caus, W, "signpers")
@@ -213,12 +220,21 @@ def test_carry_window_keeps_real_time_length():
 
 
 def test_layout_sizes_and_threshold_monotone():
-    sp1, g1, n1 = rl.build_layout(("full",))
-    assert (len(sp1), n1) == (86, 1874), (len(sp1), n1)
+    for F, fills in ((1, ("full",)), (4, rl.FILLS)):
+        sp, g, n = rl.build_layout(fills)
+        n_raw = 36 * F + 8                                  # windowed 3 x 5 W x 2 causalities x F + hl / huber 2 x 3 W x F (trailing only), EWMA 5, CUSUM 3
+        per_raw = 4 * len(rl.RATIO_GRID) + len(rl.ABS_GRID) + 4 * len(rl.RZ_GRID)
+        assert (len(sp), n) == (2 * n_raw + 10 * F, n_raw * per_raw + n_raw * len(rl.RATIO_GRID) + 10 * F * len(rl.SHARE_GRID)), (F, len(sp), n)
+    assert (len(rl.build_layout(("full",))[0]), rl.build_layout(("full",))[2]) == (98, 3746)
     sp4, g4, n4 = rl.build_layout(rl.FILLS)
-    assert (len(sp4), n4) == (296, 6344)
+    assert (len(sp4), n4) == (344, 12968)
     sph, gh, nh = rl.build_layout(rl.FILLS, True)
-    assert sum(len(g.thr) for g in gh) == 162 and all(g.headline for g in gh)
+    assert nh == 819 and all(g.headline in (1, 2) for g in gh)
+    assert sum(len(g.thr) for g in gh if g.headline == 2) == 234 and sum(len(g.thr) for g in gh if g.headline == 1) == 585
+    assert all(not (g.headline and g.spec is None) for g in gh)
+    tiers = {(sph[g.spec].stat, g.headline) for g in gh}
+    assert tiers == {("median", 2), ("mean", 2), ("trim20", 1), ("hl", 1), ("huber", 1), ("ewma", 1), ("cusum", 1)}, tiers
+    assert all(sph[g.spec].caus == "trailing" and sph[g.spec].fill in ("full", "-") for g in gh), "the bank is trailing only"
     ids = rl.column_ids(sp4, g4)
     assert len(ids) == n4 == len(set(ids)), "column ids must be unique"
     rng = np.random.default_rng(7)
@@ -226,7 +242,70 @@ def test_layout_sizes_and_threshold_monotone():
     R = rl.ratio_array(S, "abs", None)
     F = R[None] >= np.asarray(rl.ABS_GRID)[:, None, None]
     assert np.all(F[1:].sum() <= F[:-1].sum()) and all(F[i + 1].sum() <= F[i].sum() for i in range(len(F) - 1))
-    print("layout sizes 86/1874, 296/6344, 162 headline; column ids unique; flags monotone in the threshold.")
+    print("layout sizes (98/3746, 344/12968, 819 bank = 585 + 234); column ids unique; flags monotone in the threshold.")
+
+
+def test_hl_and_huber_hand_values_and_robustness():
+    one = np.array([[[3.0]]])
+    assert rl.hl_stat(one)[0, 0] == 3.0 and rl.huber_stat(one)[0, 0] == 3.0
+    V = np.array([[[1.0, 2.0, 4.0]]])               # Walsh averages: 1, 1.5, 2.5, 2, 3, 4 -> sorted 1, 1.5, 2, 2.5, 3, 4 -> median 2.25
+    assert abs(rl.hl_stat(V)[0, 0] - 2.25) < 1e-12
+    assert abs(rl.ref_stat([1.0, 2.0, 4.0], "hl") - 2.25) < 1e-12
+    same = np.full((1, 1, 5), 2.0)
+    assert rl.huber_stat(same)[0, 0] == 2.0, "MAD = 0 -> the median"
+    assert math.isnan(rl.hl_stat(np.full((1, 1, 4), np.nan))[0, 0]) and math.isnan(rl.huber_stat(np.full((1, 1, 4), np.nan))[0, 0])
+    clean = np.array([0.1, -0.2, 0.0, 0.3, -0.1, 0.2, 0.05, -0.05, 0.15, -0.15, 0.1, -0.1])
+    dirty = clean.copy()
+    dirty[0] = 50.0
+    for fn in (rl.hl_stat, rl.huber_stat):
+        a = fn(clean[None, None, :])[0, 0]
+        b = fn(dirty[None, None, :])[0, 0]
+        m = dirty.mean()
+        assert abs(b - a) < 0.5 and abs(b - a) < abs(m - clean.mean()) / 5, (fn.__name__, a, b)
+    big = np.random.default_rng(11).normal(size=(2, 5000, 25))
+    assert np.allclose(rl.hl_stat(big)[:, :3], rl.hl_stat(big[:, :3]), equal_nan=True), "chunking must not change values"
+    assert np.allclose(rl.huber_stat(big)[:, 4000:], rl.huber_stat(big[:, 4000:]), equal_nan=True)
+    print("Hodges-Lehmann / Huber: hand values, MAD = 0, NaN windows, robustness to one outlier, chunk invariance passed.")
+
+
+def test_series_specs_profiles_flags_and_correct():
+    sps = rl.series_specs(rl.FILLS, (6, 12, 24))
+    assert len(sps) == 2 * (5 * 3 * 2 * 4 + 5) + 6 and len({sp.sid for sp in sps}) == len(sps)
+    assert {sp.stat for sp in sps} == {"median", "mean", "trim20", "hl", "huber", "ewma", "cusum"}
+    full = rl.build_layout(rl.FILLS)[0]
+    for name in rl.PROFILES:
+        ids = rl.profile_spec_ids(name, full)
+        assert ids and all("trailing" in i for i in ids), name
+    mask = rl.profile_spec_ids("MASK", full)
+    assert "hl|W12|full|trailing|raw" in mask and "median|W24|full|trailing|norm" in mask and not any("|W6|" in i for i in mask)
+    alert = rl.profile_spec_ids("ALERT", full)
+    assert "cusum|K1|-|trailing|raw" in alert and "median|W6|full|trailing|raw" in alert and not any("|W12|" in i for i in alert)
+    assert set(rl.profile_spec_ids("CORRECT", full)) <= set(mask), "CORRECT estimates come from the MASK family at W12"
+    rng = np.random.default_rng(8)
+    S = rng.normal(0, 3, size=(2, 120))
+    S[0, 30:50] += 8
+    sc = np.abs(rng.normal(2, 0.5, size=(2, 120))) + 0.5
+    for scale, arr, thr in (("abs", None, 3.0), ("path", sc, 1.5), ("rz", sc, 2.0), ("rz0.5", sc, 2.0)):
+        ref = rl.ratio_array(S, scale, arr) >= thr
+        assert np.array_equal(rl.apply_flags(S, arr, thr, scale), ref), scale
+        lat = rl.apply_flags(S, arr, thr, scale, 0.5)
+        assert np.all(lat >= ref) and np.array_equal(lat, rl.latch(ref, rl.ratio_array(S, scale, arr) >= thr * 0.5))
+    for bad in ((0.0, 1.0), (1.0, 0.0), (1.0, 1.5)):
+        try:
+            rl.apply_flags(S, None, bad[0], "abs", bad[1])
+            raise RuntimeError("expected rejection")
+        except AssertionError:
+            pass
+    est = np.array([1.0, np.nan, 3.0, 4.0])
+    assert list(rl.gated_estimate(est, np.array([True, True, False, True]))) == [1.0, 0.0, 0.0, 4.0], "gated: NaN or ungated -> no correction"
+    assert rl.RZ_NAMES == ("rz", "rz0.25", "rz0.5", "rz1") and rl.rz_name(0.1) == "rz"
+    assert set(rl.ARRAY_SCALES) == {"path", "roll", "bar", "hour"} | set(rl.RZ_NAMES)
+    try:
+        rl.ratio_array(S, "rz1", None)
+        raise RuntimeError("expected rejection")
+    except AssertionError:
+        pass
+    print("series specs, profiles (selection only), apply_flags = engine flag / latch, CORRECT gating, rz names passed.")
 
 
 if __name__ == "__main__":
@@ -240,4 +319,6 @@ if __name__ == "__main__":
     test_pack_layout_hand_values()
     test_carry_window_keeps_real_time_length()
     test_layout_sizes_and_threshold_monotone()
+    test_hl_and_huber_hand_values_and_robustness()
+    test_series_specs_profiles_flags_and_correct()
     print("\nAll runlevel tests passed.")

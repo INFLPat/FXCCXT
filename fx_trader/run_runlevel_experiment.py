@@ -1,8 +1,8 @@
-# version: 261023
+# version: 261025
 """
 run_runlevel_experiment.py  (fx_trader/run_runlevel_experiment.py)
 
-Chat 14p4-iv: RUN-LEVEL VIEW for persistent arm offsets. REPORT ONLY: no window,
+Chat 14p4-iv (extended in 14p4-vi with the FLAG BANK): RUN-LEVEL VIEW for persistent arm offsets. REPORT ONLY: no window,
 ratio, threshold, statistic, detector, k, scheme, hysteresis or gap policy is chosen
 (CONTEXT_HANDOFF 4j.6, 4l). Read CONTEXT_HANDOFF 4i.11, 4j.5, 4k.8, 4k.15 and 4l (esp. 4l.8).
 numpy engine: currency_graph/runlevel.py (stdlib oracle in its tests).
@@ -15,6 +15,12 @@ spread = summed spread of the path's legs. The three triangle residuals are
 pr_X - pr_hub.
 
 SECTIONS (--sections, comma list, default all):
+  series THRESHOLD-FREE SERIES DUMP (14p4-vi) runlevel_series_<stem>.npz: per bar and path the statistic series of every
+         windowed statistic (median, mean, trim20, Hodges-Lehmann, Huber) x windows (--series-w) x fills x causality
+         (centred = HINDSIGHT) x raw / normalised input, plus EWMA and CUSUM state, per gap policy (--series-policies,
+         default all_chron = what a live consumer sees), and every scale series (path, roll, bar, hour, unscaled robust-z
+         MAD; rz floors 0.1 / 0.25 / 0.5 / 1 are applied with max()). ANY threshold, scale or purpose profile (MASK, ALERT,
+         CORRECT: rl.PROFILES) can then be applied OFFLINE with rl.apply_flags(): no rerun. Also stores the rung -> bps table.
   bars   PER-BAR DUMP runlevel_bars_<stem>.npz - raw series (pr, ps, d, triangle
          residuals, scales per gap policy, stretch geometry, masks, stretch ids).
          EXISTS SO NO LATER CHAT RECOMPUTES IT: re-upload it instead (load_bars_npz()).
@@ -27,8 +33,11 @@ SECTIONS (--sections, comma list, default all):
          1/3/6/12/24/48 h + mixed, never across gaps except the barindex diagnostics;
          CONTEXT_HANDOFF 4j.5), segment-bootstrap CIs for the headline columns, and the
          six real JPY runs UNTUNED (onset latency, bars covered, flags before/after) + a
-         check of the runs against the mask and of the dump route against 4i.11.
-  inj    INJECTED persistent offsets (R1: added to the path residual, then the median of
+         check of the runs against the mask and of the dump route against 4i.11. 14p4-vi: the same six runs under
+         ALTERNATIVE RUN EXTENTS (run_extents(): the detector-defined window, return-to-zero (|d| < X bps for N bars) and
+         fraction-of-peak ends, plus --run-extents user JSON), JPY path, all_chron, plain flag, stored concurrently.
+  inj    INJECTED persistent offsets (shapes include step_plateau: sp<W>_p<P> = W bars at the magnitude, then a plateau
+         of P bps (capped at the magnitude) for the rest of the duration; plateau length = D - W) (R1: added to the path residual, then the median of
          paths is recomputed), real ref chronology, paired CLEAN windows (same starts, no
          injection). Cells = path x sign x magnitude x shape x duration. GEOMETRY (261023):
          the run (D bars) must lie inside one ref stretch; the 48 bars before and 48 after
@@ -87,11 +96,22 @@ JPY = 3
 CLASSES = w.CLASSES
 POLICIES_DEFAULT = ("mask_reset", "all_chron")
 POLICY_RE = re.compile(r"(mask_reset|all_chron|(mask|all)_carry(\d+)|(mask|all)_barindex)")
-SHAPES = ("flat", "ramp", "decay", "pulse", "expdecay")
-MAGS = (2.0, 3.0, 4.0, 6.0, 9.0, 15.0)
+SHAPES_BASE = ("flat", "ramp", "decay", "pulse", "expdecay")
+SHAPES_SP = ("sp3_p0", "sp3_p2", "sp3_p3", "sp3_p3.5")       # step of 3 bars, then plateau 0 / 2 / 3 / 3.5 bps
+SHAPES = SHAPES_BASE + SHAPES_SP
+SP_RE = re.compile(r"sp(\d+)_p(\d+(?:\.\d+)?)")
+MAGS = (1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 6.0, 9.0, 15.0)
 DURS = (1, 3, 6, 12, 24, 48, 72)
 METRICS = ("det", "lat", "cover", "tail")
-SECTIONS_ALL = ("bars", "real", "inj", "tier2")
+SECTIONS_ALL = ("bars", "series", "real", "inj", "tier2")
+SERIES_POLICIES = ("all_chron",)
+SERIES_FILLS = rl.FILLS
+SERIES_W = (6, 12, 24)
+EXT_X = (1.0, 1.5, 2.0)                  # return-to-zero levels, bps
+EXT_N = (1, 3, 6)                        # consecutive bars
+EXT_FRAC = (0.5, 0.25)                   # fraction of the run peak
+EXT_FRAC_N = 3
+EXT_LOOK = 96                            # bars searched after a run start
 BUCKET_EDGES = (6, 12, 24, 48)
 BUCKET_LABELS = ("0-5", "6-11", "12-23", "24-47", "48+")
 SPACING_H = 24
@@ -120,13 +140,25 @@ LIMITATIONS = [
     "Per-class (start-hour) totals and block CIs are stored for the HEADLINE columns only; centred statistics are HINDSIGHT; EWMA/CUSUM are trailing only.",
     "Tier 2: R3 reference rule (W=12 trailing median, ratio 1.0) and correction leg (the arm's first leg) are fixed, not chosen; empirical-world innocent-currency error floor is about 0 by construction (4k.7).",
     "Volume is assumed to be OANDA's tick count (UNVERIFIED).",
+    "14p4-vi flag bank: the SERIES dump is threshold-free but covers the real chronology only; injection results exist at the ladder rungs only (millions of injected trials cannot be stored as series), so a rung outside the ladder, a k-of-n rule or any other post-flag rule needs an injection rerun.",
+    "Hodges-Lehmann and Huber are defined in currency_graph/runlevel.py (Huber: window-MAD scale, c = 1.345, 20 fixed steps from the median); they are one parameterisation each, not tuned. Huber with MAD = 0 returns the median.",
+    "rz floors 0.1 / 0.25 / 0.5 / 1.0 bps are all stored; the unfloored MAD scale is kept in the series dump. rz at floor 0.1 sits on its floor in >= 95% of ref bars (MEASURED, 14p4-vi), so it is then an absolute threshold of 0.1 x z bps.",
+    "step_plateau (sp<W>_p<P>): the plateau levels 0 / 2 / 3 / 3.5 bps and a 3-bar step are PATTERN-MATCHED to six detector-defined real runs (step 3.6-8.8 bps, plateau 1.8-3.6 bps for at least 14-20 bars, censored): they are not estimated and not validated. Plateau length = duration - 3 (durations 12 / 24 / 48 / 72 give 9 / 21 / 45 / 69 bars). Where P >= the magnitude the shape is flat.",
+    "Alternative run extents (run_extents) are computed from d_JPY of the same dump: return-to-zero and fraction-of-peak ends are data-defined but not independent of the series that is flagged. They are stored for comparison with a second source (16p1), not as truth. Censored = no quiet block within 96 bars.",
 ]
 
 
 # ------------------------------------------------------------ small helpers
-def shape_vec(name: str, D: int):
+def shape_vec(name: str, D: int, mag: float | None = None):
+    """Unit shape over D bars. step_plateau (sp<W>_p<P>) needs the magnitude: W bars at 1, then min(P / mag, 1)."""
     assert D >= 1, "duration must be >= 1"
     k = np.arange(D, dtype=float)
+    m = SP_RE.fullmatch(name)
+    if m:
+        assert mag is not None and mag > 0, "step_plateau shapes need the magnitude"
+        v = np.ones(D)
+        v[int(m.group(1)):] = min(float(m.group(2)) / mag, 1.0)
+        return v
     if name == "flat":
         return np.ones(D)
     if name == "ramp":
@@ -197,8 +229,11 @@ def policy_layout(base: dict, name: str) -> tuple:
 def compute_scales(base: dict, pos, M: int) -> dict:
     ps_p, d_p = pack(base["ps"], pos, M), pack(base["d"], pos, M)
     roll = unpack(rl.rolling_median(ps_p, 24, 12), pos)
-    rz = unpack(np.maximum(1.4826 * rl.rolling_mad(d_p, 120, 30), 0.1), pos)
-    return {"path": base["ps"], "roll": roll, "bar": np.tile(base["ms"], (4, 1)), "hour": base["hour_scale"], "rz": rz}
+    raw = rl.MAD_SCALE * rl.rolling_mad(d_p, 120, 30)
+    sc = {"path": base["ps"], "roll": roll, "bar": np.tile(base["ms"], (4, 1)), "hour": base["hour_scale"], "rzraw": unpack(raw, pos)}
+    for fl in rl.RZ_FLOORS:
+        sc[rl.rz_name(fl)] = unpack(np.maximum(raw, fl), pos)
+    return sc
 
 
 def get_policy(base: dict, name: str) -> dict:
@@ -298,7 +333,7 @@ def write_bars(path: str, base: dict, policies) -> None:
     assert not Path(path).exists(), f"output already exists: {path}"
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     arrays = {
-        "schema": np.array([2]), "bar_seconds": np.array([HOUR]), "paths": np.array(PATHS),
+        "schema": np.array([3]), "rz_floors": np.array(rl.RZ_FLOORS), "bar_seconds": np.array([HOUR]), "paths": np.array(PATHS),
         "triangle_labels": np.array([f"{p}-hub" for p in PATHS[1:]]),
         "epoch": base["epoch"], "hour": base["hour"], "class_code": base["cls"], "classes": np.array(CLASSES),
         "dst_cell": base["cell"], "masked": base["masked"], "aclu": base["acl"], "rclu": base["rcl"],
@@ -311,6 +346,7 @@ def write_bars(path: str, base: dict, policies) -> None:
         sc = get_policy(base, pol)["scales"]
         arrays[f"roll_{pol}"] = sc["roll"]
         arrays[f"rz_{pol}"] = sc["rz"]
+        arrays[f"rzraw_{pol}"] = sc["rzraw"]
     np.savez_compressed(path, **arrays)
 
 
@@ -372,6 +408,7 @@ def trial_window(base: dict, rows, D: int) -> tuple:
 
 
 def headline_starts(groups) -> tuple:
+    """Index space of the bank (tiers 1 and 2: class / bucket / hysteresis arrays)."""
     hs, h = {}, 0
     for gi, g in enumerate(groups):
         if g.headline:
@@ -384,11 +421,25 @@ def headline_cols(groups):
     return np.array([c for g in groups if g.headline for c in range(g.col0, g.col0 + len(g.thr))], int)
 
 
+def ci_starts(groups) -> tuple:
+    """Index space of the CI columns (tier 2 only: block and stretch-clustered bootstrap CIs)."""
+    cs, h = {}, 0
+    for gi, g in enumerate(groups):
+        if g.headline == 2:
+            cs[gi] = h
+            h += len(g.thr)
+    return cs, h
+
+
+def ci_cols(groups):
+    return np.array([c for g in groups if g.headline == 2 for c in range(g.col0, g.col0 + len(g.thr))], int)
+
+
 # --------------------------------------------------------------- injection
 class InjAcc:
     """Accumulators of the injection section: one row per injected cell, one per clean (path, duration)."""
 
-    def __init__(self, nc, ncl, ncols, nh, ncls, nb, n_cl, hy, use_ci):
+    def __init__(self, nc, ncl, ncols, nh, ncls, nb, n_cl, hy, use_ci, nci):
         z = lambda *s: np.zeros(s, np.int32)
         self.A = {m: z(nc, ncols) for m in METRICS}
         self.C = {m: z(ncl, ncols) for m in METRICS}
@@ -398,20 +449,34 @@ class InjAcc:
         self.HCb = {m: z(nb, ncl, nh) for m in METRICS}
         self.HY = {(v, k): z(nc, nh) for v in hy for k in ("cover", "tail")}
         self.HYC = {(v, k): z(ncl, nh) for v in hy for k in ("cover", "tail")}
-        self.SD = np.zeros((nc, n_cl, nh), np.uint8) if use_ci else None
-        self.SL = np.zeros((nc, n_cl, nh), np.int16) if use_ci else None
+        self.SD = np.zeros((nc, n_cl, nci), np.uint8) if use_ci else None
+        self.SL = np.zeros((nc, n_cl, nci), np.int16) if use_ci else None
 
     def cell(self, c: int) -> dict:
         return {"A": [self.A[m][c] for m in METRICS], "H": [self.H[m][:, c] for m in METRICS],
                 "HB": [self.HB[m][:, c] for m in METRICS], "HY": {k: v[c] for k, v in self.HY.items()},
                 "SD": None if self.SD is None else self.SD[c], "SL": None if self.SL is None else self.SL[c]}
 
+    def fill_dups(self, dup: dict) -> None:
+        """Cells that are exactly another cell (a step_plateau whose plateau is capped at the magnitude IS the flat shape)
+        are not evaluated: they take the source cell's accumulators (assignment, the sources are cumulative)."""
+        assert all(0 <= t < len(self.A["det"]) and 0 <= s_ < len(self.A["det"]) and s_ not in dup for t, s_ in dup.items()), "bad duplicate map"
+        for t, s_ in dup.items():
+            for m in METRICS:
+                self.A[m][t] = self.A[m][s_]
+                self.H[m][:, t] = self.H[m][:, s_]
+                self.HB[m][:, t] = self.HB[m][:, s_]
+            for k in self.HY:
+                self.HY[k][t] = self.HY[k][s_]
+            if self.SD is not None:
+                self.SD[t], self.SL[t] = self.SD[s_], self.SL[s_]
+
     def clean(self, r: int) -> dict:
         return {"A": [self.C[m][r] for m in METRICS], "H": [self.HCc[m][:, r] for m in METRICS],
                 "HB": [self.HCb[m][:, r] for m in METRICS], "HY": {k: v[r] for k, v in self.HYC.items()}, "SD": None, "SL": None}
 
 
-def eval_inj(stats, groups, thr, scales, D, oh, acc, hstart, hy) -> None:
+def eval_inj(stats, groups, thr, scales, D, oh, acc, hstart, hy, cstart) -> None:
     """Accumulate det / first-flag index / cover / tail for every column of one cell (or clean row);
     headline columns also by class, by context bucket, by stretch cluster, and under hysteresis."""
     for gi, g in enumerate(groups):
@@ -431,9 +496,10 @@ def eval_inj(stats, groups, thr, scales, D, oh, acc, hstart, hy) -> None:
             v = vals[m].astype(np.float32).T
             acc["H"][m][:, h0:h0 + k] += _ri(oh["cls"].T @ v)
             acc["HB"][m][:, h0:h0 + k] += _ri(oh["bkt"].T @ v)
-        if acc["SD"] is not None:
-            acc["SD"][:, h0:h0 + k] += _ri(oh["clu"].T @ vals[0].astype(np.float32).T, np.uint8)
-            acc["SL"][:, h0:h0 + k] += _ri(oh["clu"].T @ vals[1].astype(np.float32).T, np.int16)
+        c1 = cstart.get(gi, -1)
+        if acc["SD"] is not None and c1 >= 0:
+            acc["SD"][:, c1:c1 + k] += _ri(oh["clu"].T @ vals[0].astype(np.float32).T, np.uint8)
+            acc["SL"][:, c1:c1 + k] += _ri(oh["clu"].T @ vals[1].astype(np.float32).T, np.int16)
         for v in hy:
             FLh = rl.latch(FL, R[None] >= (thr[gi] * v)[:, None, None])
             acc["HY"][(v, "cover")][h0:h0 + k] += FLh[..., :D].sum((-1, -2))
@@ -472,8 +538,9 @@ def run_injection(base: dict, cfg: dict, hooks: dict) -> dict:
     specs, groups, ncols = rl.build_layout(fills, cfg["detail"] == "headline")
     thr = [np.asarray(g.thr, float) for g in groups]
     hstart, nh = headline_starts(groups)
-    assert nh > 0, "the layout has no headline columns (needs fill 'full')"
-    hcols = headline_cols(groups)
+    cstart, nci = ci_starts(groups)
+    assert nh > 0 and nci > 0, "the layout has no headline columns (needs fill 'full')"
+    hcols, ccols = headline_cols(groups), ci_cols(groups)
     hy = tuple(cfg["hyst"])
     paths, signs, mags, shapes, durs = cfg["paths"], cfg["signs"], cfg["mags"], cfg["shapes"], cfg["durs"]
     pidx = [PATHS.index(p) for p in paths]
@@ -481,12 +548,13 @@ def run_injection(base: dict, cfg: dict, hooks: dict) -> dict:
     nc, ncl = nP * nS * nM * nH * nD, nP * nD
     ncls, nb, n_cl = len(CLASSES), len(BUCKET_LABELS), base["n_cl"]
     use_ci = cfg["boot"] > 0
-    acc = InjAcc(nc, ncl, ncols, nh, ncls, nb, n_cl, hy, use_ci)
+    acc = InjAcc(nc, ncl, ncols, nh, ncls, nb, n_cl, hy, use_ci, nci)
     ntr = np.zeros(nD, np.int64)
     ntc, ntb = np.zeros((ncls, nD), np.int64), np.zeros((nb, nD), np.int64)
     ntcl = np.zeros((nD, n_cl), np.int64)
     tl, tlc, tlb = np.zeros(nD), np.zeros((ncls, nD)), np.zeros((nb, nD))
     log = {k: [] for k in ("di", "row", "cls", "bkt", "clu", "tail_valid", "ckpt")}
+    dup: dict = {}
     pools = {D: ordered_starts(base, D, cfg["stride"], cfg["stride_class"], cfg["seed"]) for D in durs}
     pool_sizes = {str(D): {c: len(v) for c, v in pools[D].items()} for D in durs}
     sc_all = get_policy(base, "mask_reset")["scales"]
@@ -515,35 +583,39 @@ def run_injection(base: dict, cfg: dict, hooks: dict) -> dict:
             I, avail = trial_window(base, rows, D)
             PRB = np.where(avail[None], base["pr"][:, I], np.nan)
             Ie, avE = I[:, PRE:PRE + E], avail[:, PRE:PRE + E]
-            shapes_v = {s: shape_vec(s, D) for s in shapes}
             for pi, xi in enumerate(pidx):
                 PSX = np.where(avail, np.maximum(base["ps"][xi][I], 1e-9), np.nan)
-                scales = {name: np.where(avE, sc_all[name][xi][Ie], np.nan) for name in ("path", "roll", "bar", "hour", "rz")}
+                scales = {name: np.where(avE, sc_all[name][xi][Ie], np.nan) for name in rl.ARRAY_SCALES}
                 d0 = deviation(PRB, xi)
                 stats = [None] * len(specs)
                 for si_, a in rl.iter_stats({"raw": d0, "norm": d0 / PSX}, specs, PRE, PRE + E, False):
                     stats[si_] = a
-                eval_inj(stats, groups, thr, scales, D, oh, acc.clean(pi * nD + di), hstart, hy)
+                eval_inj(stats, groups, thr, scales, D, oh, acc.clean(pi * nD + di), hstart, hy, cstart)
                 for si, sg in enumerate(signs):
                     for mi, mag in enumerate(mags):
                         for shi, shp in enumerate(shapes):
+                            cidx = ((((pi * nS + si) * nM + mi) * nH + shi) * nD + di)
+                            vec = shape_vec(shp, D, mag)
+                            if cfg.get("dedupe", True) and "flat" in shapes and shp != "flat" and np.all(vec == 1.0):
+                                dup[cidx] = ((((pi * nS + si) * nM + mi) * nH + shapes.index("flat")) * nD + di)
+                                continue
                             PR = PRB.copy()
-                            PR[xi][:, PRE:PRE + D] += sg * mag * shapes_v[shp][None, :]
+                            PR[xi][:, PRE:PRE + D] += sg * mag * vec[None, :]
                             d = deviation(PR, xi)
                             stats = [None] * len(specs)
                             for si_, a in rl.iter_stats({"raw": d, "norm": d / PSX}, specs, PRE, PRE + E, False):
                                 stats[si_] = a
-                            cidx = ((((pi * nS + si) * nM + mi) * nH + shi) * nD + di)
-                            eval_inj(stats, groups, thr, scales, D, oh, acc.cell(cidx), hstart, hy)
+                            eval_inj(stats, groups, thr, scales, D, oh, acc.cell(cidx), hstart, hy, cstart)
             if hooks.get("count"):
                 hooks["count"]("injection_trials", n * (1 + nP * nS * nM * nH))
         if hooks.get("item"):
             hooks["item"](f"inj/checkpoint{k_now}", time.perf_counter() - t0, starts=int(k_now))
+        acc.fill_dups(dup)
         np.savez_compressed(cfg["out_paths"]["inj_ckpt"].format(k=k_now), n_trials=ntr.copy(), n_trials_class=ntc.copy(),
                             n_trials_bucket=ntb.copy(), hcols=hcols, **{f"a_{m}": acc.A[m][:, hcols] for m in METRICS})
         k_prev = k_now
     out = {"n_trials": ntr, "n_trials_class": ntc, "n_trials_bucket": ntb, "n_trials_stretch": ntcl,
-           "tail_valid": tl, "tail_valid_class": tlc, "tail_valid_bucket": tlb, "hcols": hcols}
+           "tail_valid": tl, "tail_valid_class": tlc, "tail_valid_bucket": tlb, "hcols": hcols, "ci_cols": ccols}
     for m in METRICS:
         out[m] = acc.A[m].astype(np.uint32)
         out[f"c_{m}"] = acc.C[m].astype(np.uint32)
@@ -560,9 +632,10 @@ def run_injection(base: dict, cfg: dict, hooks: dict) -> dict:
     for key, vals in log.items():
         out[f"trial_{key}"] = np.concatenate(vals) if vals else np.zeros(0, int)
     np.savez_compressed(cfg["out_paths"]["inj"], **out)
-    return {"columns": rl.column_ids(specs, groups), "n_cols": ncols, "n_headline_cols": nh, "n_cells": nc, "pool_sizes": pool_sizes,
+    return {"columns": rl.column_ids(specs, groups), "n_cols": ncols, "n_headline_cols": nh, "n_ci_cols": nci, "n_cells": nc, "pool_sizes": pool_sizes,
             "fills": list(fills), "hyst_exit": list(hy), "bucket_labels": list(BUCKET_LABELS), "classes": list(CLASSES),
-            "cells_axes": {"order": "path,sign,mag,shape,dur (C order); cell = ((((p*S+s)*M+m)*H+h)*D+d)", "paths": list(paths),
+            "duplicate_cells": {"rule": "a step_plateau cell whose vector is all ones (plateau >= magnitude, or duration <= step) is not evaluated; it takes the flat cell's accumulators", "n": len(dup)},
+            "cells_axes": {"order": "path,sign,mag,shape,dur (C order); cell = ((((p*S+s)*M+m)*H+h)*D+d)", "step_plateau": "sp<W>_p<P>: W bars at the magnitude then min(P, magnitude) bps for the rest of the duration (plateau length = D - W)", "paths": list(paths),
                            "signs": list(signs), "mags": list(mags), "shapes": list(shapes), "durs": list(durs)},
             "clean_axes": "row = path_index*len(durs)+dur_index", "checkpoints": list(cfg["checkpoints"]),
             "metrics": {"det": "trials with a flag during the run", "lat": "sum of first-flag index (bars from onset) over detected trials",
@@ -571,10 +644,64 @@ def run_injection(base: dict, cfg: dict, hooks: dict) -> dict:
                        "h_*": "[class, cell, headline column]", "hb_*": "[context bucket, cell, headline column]",
                        "hc_* / hcb_*": "clean windows by class / bucket [.., path*dur row, headline column]",
                        "hy75_cover etc.": "cover / tail under hysteresis exit 0.75 (50 = 0.5) [cell, headline column]; chy*: clean windows",
-                       "ci_det_lo/hi, ci_lat_lo/hi": "[cell, headline column] stretch-clustered bootstrap 95% CI (final checkpoint) of the detection rate and of the mean first-flag index among detected trials",
+                       "ci_det_lo/hi, ci_lat_lo/hi": "[cell, ci column (index into ci_cols; tier 2 only)] stretch-clustered bootstrap 95% CI (final checkpoint) of the detection rate and of the mean first-flag index among detected trials",
                        "n_trials*": "[dur] / [class, dur] / [bucket, dur] / [dur, stretch cluster]; tail_valid*: available tail bars (denominator of tail)",
                        "trial_*": "per-trial table: duration index, bar row, class, bucket, stretch cluster, tail_valid, checkpoint at which it entered",
-                       "hcols": "column indices of the headline columns"}}
+                       "hcols": "column indices of the bank columns (tiers 1 + 2: class / bucket / hysteresis arrays)", "ci_cols": "column indices of the tier-2 columns that carry CIs"}}
+
+
+# ------------------------------------------------------------------ series
+QUANTILES = (5, 25, 50, 75, 95)
+
+
+def ladder_table(base: dict) -> dict:
+    """Rung -> bps per bar: quantiles of every scale over the REF population (never the masked bars) per path, and the
+    ladder rungs, so rung x quantile = the offset in bps a rung stands for. abs is 1 bps per unit."""
+    sc = get_policy(base, "mask_reset")["scales"]
+    ref = ~base["masked"]
+    assert ref.shape == (base["N"],) and ref.any(), "the ref population must not be empty"
+    out = {"quantiles": list(QUANTILES), "paths": list(PATHS), "abs": {"scale": 1.0, "rungs": list(rl.grid_for("abs"))}}
+    for name in rl.ARRAY_SCALES:
+        arr = sc[name]
+        qs = [[float(v) for v in np.nanpercentile(arr[x][ref], QUANTILES)] if np.isfinite(arr[x][ref]).any() else [None] * len(QUANTILES) for x in range(4)]
+        out[name] = {"scale_bps_quantiles_by_path": qs, "rungs": list(rl.grid_for(name)),
+                     "rung_bps_at_median_by_path": [[None if q[2] is None else float(r * q[2]) for r in rl.grid_for(name)] for q in qs]}
+    return out
+
+
+def run_series(base: dict, cfg: dict, hooks: dict) -> dict:
+    """THRESHOLD-FREE series dump: per policy a (n_specs, 4 paths, N bars) float32 array in the bar order of the bars dump
+    (NaN where the policy does not contain the bar or the statistic is undefined). No threshold, scale choice or profile is applied."""
+    specs = rl.series_specs(cfg["series_fills"], cfg["series_w"])
+    N = base["N"]
+    assert cfg["series_policies"] and len(set(cfg["series_policies"])) == len(cfg["series_policies"]), "series policies must be distinct and non-empty"
+    arrays = {"schema": np.array([1]), "epoch": base["epoch"], "masked": base["masked"], "paths": np.array(PATHS),
+              "spec_ids": np.array([sp.sid for sp in specs]), "rz_floors": np.array(rl.RZ_FLOORS),
+              "scale_path": base["ps"].astype(np.float32), "scale_bar": np.tile(base["ms"], (4, 1)).astype(np.float32),
+              "scale_hour": base["hour_scale"].astype(np.float32)}
+    info = {}
+    for pol in cfg["series_policies"]:
+        t0 = time.perf_counter()
+        pd = get_policy(base, pol)
+        pos, M = pd["pos"], pd["M"]
+        Xs = {"raw": pack(base["d"], pos, M), "norm": pack(base["d"] / np.maximum(base["ps"], 1e-9), pos, M)}
+        st = np.full((len(specs), 4, N), np.nan, np.float32)
+        for i, S in rl.iter_stats(Xs, specs, 0, M, True):
+            st[i] = unpack(S, pos)
+        arrays[f"stat_{pol}"] = st
+        arrays[f"scale_roll_{pol}"] = pd["scales"]["roll"].astype(np.float32)
+        arrays[f"scale_rzraw_{pol}"] = pd["scales"]["rzraw"].astype(np.float32)
+        info[pol] = {"packed_len": int(M), "n_segments": len(pd["segs"])}
+        if hooks.get("item"):
+            hooks["item"](f"series/{pol}", time.perf_counter() - t0, specs=len(specs))
+    np.savez_compressed(cfg["out_paths"]["series"], **arrays)
+    return {"n_specs": len(specs), "spec_ids": [sp.sid for sp in specs], "policies": list(cfg["series_policies"]), "per_policy": info,
+            "fills": list(cfg["series_fills"]), "windows": list(cfg["series_w"]), "ladder": ladder_table(base),
+            "profiles": {n: {"purpose": v["purpose"], "spec_ids": rl.profile_spec_ids(n, specs), "gate": v.get("gate")} for n, v in rl.PROFILES.items()},
+            "arrays": {"stat_<policy>": "[spec, path, bar] float32 statistic series (bar order of the bars dump)",
+                       "scale_path/bar/hour": "[path, bar] float32", "scale_roll_<policy>": "[path, bar]",
+                       "scale_rzraw_<policy>": "[path, bar] 1.4826 x trailing MAD (120 bars, >= 30) BEFORE the floor; rz scale = max(this, floor) for floor in rz_floors",
+                       "use": "rl.apply_flags(stat[i, path], scale_array, threshold, scale_name, exit_frac); PROFILES only select statistics"}}
 
 
 # -------------------------------------------------------------------- real
@@ -596,11 +723,15 @@ def seg_bootstrap_ci(runs, segidx, nseg: int, boot: int, rng) -> tuple:
     return lo.reshape(k, P), hi.reshape(k, P)
 
 
-def run_windows(base: dict, pos) -> list:
+def real_spans() -> list:
+    return [(label, stored_ts_to_epoch(s), stored_ts_to_epoch(e)) for label, s, e, _x in REAL_RUNS]
+
+
+def run_windows(base: dict, pos, spans: list | None = None) -> list:
+    """Packed row indices of the run / pre / post windows for [(label, start_epoch, end_epoch)] (default: REAL_RUNS)."""
     ep = base["epoch"]
     out = []
-    for label, s, e, _x in REAL_RUNS:
-        s_ep, e_ep = stored_ts_to_epoch(s), stored_ts_to_epoch(e)
+    for _label, s_ep, e_ep in (spans if spans is not None else real_spans()):
         sel = {"run": (ep >= s_ep) & (ep <= e_ep), "pre": (ep >= s_ep - PRE * HOUR) & (ep < s_ep),
                "post": (ep > e_ep) & (ep <= e_ep + PRE * HOUR)}
         d = {k: pos[np.where(v)[0]][pos[np.where(v)[0]] >= 0] for k, v in sel.items()}
@@ -611,21 +742,78 @@ def run_windows(base: dict, pos) -> list:
     return out
 
 
+def _quiet_end(absd, pos_of, s_ep: int, thr: float, n: int) -> tuple:
+    """End of an excursion that starts at s_ep: the bar before the first block of n consecutive hourly bars with
+    |d| < thr (a missing bar breaks the block). Returns (end_epoch, censored); censored = no block within EXT_LOOK bars."""
+    assert n >= 1 and thr >= 0 and s_ep > 0, "bad quiet-block request"
+    for k in range(1, EXT_LOOK):
+        e0 = s_ep + k * HOUR
+        if all((i := pos_of.get(e0 + j * HOUR)) is not None and absd[i] < thr for j in range(n)):
+            return e0 - HOUR, False
+    return s_ep + (EXT_LOOK - 1) * HOUR, True
+
+
+def run_extents(base: dict, user: dict | None = None) -> dict:
+    """ALTERNATIVE EXTENTS of the six real JPY runs, stored concurrently (the 4i.11 start / end are detector-defined, hence
+    circular). {name: [(start_epoch, end_epoch, censored) per run]}. Definitions (none preferred):
+      detector            the 4i.11 window
+      rtz_x<X>_n<N>       start = earliest bar of the contiguous excursion |d_JPY| >= X containing the detector start (<= 48 bars back);
+                          end = last bar before N consecutive bars with |d_JPY| < X
+      peak_f<F>_n<N>      start = detector start; end = last bar before N consecutive bars with |d_JPY| < F x the peak |d_JPY| of the detector window
+      user                from --run-extents (JSON {run: {start, end}}), when given
+    All on the JPY path of the base series; a missing bar is neither quiet nor part of an excursion."""
+    ep, absd = base["epoch"], np.abs(base["d"][JPY])
+    pos_of = {int(e): i for i, e in enumerate(ep)}
+    spans = real_spans()
+    out = {"detector": [(s, e, False) for _l, s, e in spans]}
+    for X in EXT_X:
+        for N in EXT_N:
+            rows = []
+            for _l, s, e in spans:
+                s2 = s
+                for _ in range(PRE):
+                    i = pos_of.get(s2 - HOUR)
+                    if i is None or not absd[i] >= X:
+                        break
+                    s2 -= HOUR
+                end, cen = _quiet_end(absd, pos_of, s, X, N)
+                rows.append((s2, max(end, s), cen))
+            out[f"rtz_x{X:g}_n{N}"] = rows
+    for F in EXT_FRAC:
+        rows = []
+        for _l, s, e in spans:
+            sel = (ep >= s) & (ep <= e)
+            peak = float(np.nanmax(absd[sel])) if sel.any() and np.isfinite(absd[sel]).any() else 0.0
+            end, cen = _quiet_end(absd, pos_of, s, F * peak, EXT_FRAC_N) if peak > 0 else (e, True)
+            rows.append((s, max(end, s), cen))
+        out[f"peak_f{F:g}_n{EXT_FRAC_N}"] = rows
+    if user:
+        labels = [r[0] for r in REAL_RUNS]
+        assert set(user) <= set(labels), f"--run-extents runs must be among {labels}"
+        out["user"] = [(stored_ts_to_epoch(user[l]["start"]), stored_ts_to_epoch(user[l]["end"]), False) if l in user
+                       else (spans[i][1], spans[i][2], False) for i, l in enumerate(labels)]
+    return out
+
+
 def real_pass(base: dict, cfg: dict, hooks: dict) -> dict:
     specs, groups, ncols = rl.build_layout(rl.FILLS, cfg["detail"] == "headline")
     by_spec = defaultdict(list)
     for gi, g in enumerate(groups):
         by_spec[g.spec].append(gi)
     hstart, nh = headline_starts(groups)
+    cstart, nci = ci_starts(groups)
+    ext = run_extents(base, cfg.get("user_extents"))
+    ext_names = list(ext)
     pols = cfg["policies"]
     hyst = [1.0] + list(cfg["hyst"])
     nPol, nHy, nl, ng, nr = len(pols), len(hyst), len(rl.BLOCK_LABELS), len(RUN_GAPS), len(REAL_RUNS)
     out = {
         "flagbars": np.zeros((nPol, nHy, 4, ncols), np.int32), "runs_total": np.zeros((nPol, nHy, ng, 4, ncols), np.int32),
         "blk_runs": np.zeros((nPol, nHy, nl, ng, 4, ncols), np.float32), "blk_share": np.zeros((nPol, nHy, nl, ng, 4, ncols), np.float32),
-        "blk_ci_lo": np.full((nPol, nHy, nl, ng, 4, max(nh, 1)), np.nan, np.float32),
-        "blk_ci_hi": np.full((nPol, nHy, nl, ng, 4, max(nh, 1)), np.nan, np.float32),
-        "real_runs": np.zeros((nPol, nHy, nr, 4, ncols, 5), np.float32), "hcols": headline_cols(groups),
+        "blk_ci_lo": np.full((nPol, nHy, nl, ng, 4, max(nci, 1)), np.nan, np.float32),
+        "blk_ci_hi": np.full((nPol, nHy, nl, ng, 4, max(nci, 1)), np.nan, np.float32),
+        "real_runs": np.zeros((nPol, nHy, nr, 4, ncols, 5), np.float32), "hcols": headline_cols(groups), "ci_cols": ci_cols(groups),
+        "real_ext": np.zeros((len(ext_names), nr, ncols, 5), np.float32),
     }
     seginfo = {}
     for pi, pol in enumerate(pols):
@@ -640,6 +828,7 @@ def real_pass(base: dict, cfg: dict, hooks: dict) -> dict:
         blocks = [rl.draw_blocks(segs, None if lab == "mixed" else int(lab), cfg["blocks_per_length"], rng) for lab in rl.BLOCK_LABELS]
         block_sets = [(b[0], b[1]) for b in blocks]
         rw = run_windows(base, pos)
+        ext_windows = {name: run_windows(base, pos, [(r[0], *ext[name][i][:2]) for i, r in enumerate(REAL_RUNS)]) for name in ext_names}
         popn, carry = parse_policy(pol)
         seginfo[pol] = {"population": popn, "carry": carry, "n_segments": len(segs), "longest_segment": max((n for _s, n in segs), default=0),
                         "packed_len": int(M), "blocks_drawn": {lab: int(len(b[0])) for lab, b in zip(rl.BLOCK_LABELS, blocks)},
@@ -664,11 +853,11 @@ def real_pass(base: dict, cfg: dict, hooks: dict) -> dict:
                                 continue
                             out["blk_runs"][pi, hi_, li, gj, :, c0:c0 + k] = r.mean(-1).T
                             out["blk_share"][pi, hi_, li, gj, :, c0:c0 + k] = (r > 0).mean(-1).T
-                            h0 = hstart.get(gi, -1)
-                            if h0 >= 0:
+                            c1 = cstart.get(gi, -1)
+                            if c1 >= 0:
                                 lo, hi = seg_bootstrap_ci(r, blocks[li][2], len(segs), cfg["boot"], ci_rng)
-                                out["blk_ci_lo"][pi, hi_, li, gj, :, h0:h0 + k] = lo.T
-                                out["blk_ci_hi"][pi, hi_, li, gj, :, h0:h0 + k] = hi.T
+                                out["blk_ci_lo"][pi, hi_, li, gj, :, c1:c1 + k] = lo.T
+                                out["blk_ci_hi"][pi, hi_, li, gj, :, c1:c1 + k] = hi.T
                     for ri, d in enumerate(rw):
                         nv = len(d["run"])
                         out["real_runs"][pi, hi_, ri, :, c0:c0 + k, 0] = nv
@@ -682,15 +871,33 @@ def real_pass(base: dict, cfg: dict, hooks: dict) -> dict:
                         for slot, key in ((3, "pre"), (4, "post")):
                             if len(d[key]):
                                 out["real_runs"][pi, hi_, ri, :, c0:c0 + k, slot] = F[:, :, d[key]].sum(-1).T
+                    if pol == "all_chron" and hi_ == 0:
+                        for ei, name in enumerate(ext_names):
+                            for ri, d in enumerate(ext_windows[name]):
+                                nv = len(d["run"])
+                                out["real_ext"][ei, ri, c0:c0 + k, 0] = nv
+                                if nv == 0:
+                                    continue
+                                sub = F[:, JPY, d["run"]]
+                                det = sub.any(-1)
+                                out["real_ext"][ei, ri, c0:c0 + k, 1] = sub.sum(-1)
+                                out["real_ext"][ei, ri, c0:c0 + k, 2] = np.where(det, (d["ep_run"][sub.argmax(-1)] - d["s_ep"]) / HOUR, -1.0)
+                                for slot, key in ((3, "pre"), (4, "post")):
+                                    if len(d[key]):
+                                        out["real_ext"][ei, ri, c0:c0 + k, slot] = F[:, JPY, d[key]].sum(-1)
         if hooks.get("item"):
             hooks["item"](f"real/{pol}", time.perf_counter() - t0, packed=int(M))
     np.savez_compressed(cfg["out_paths"]["real"], **out)
-    return {"columns": rl.column_ids(specs, groups), "n_cols": ncols, "n_headline_cols": nh, "policies": list(pols), "hyst_variants": hyst,
+    return {"columns": rl.column_ids(specs, groups), "n_cols": ncols, "n_headline_cols": nh, "n_ci_cols": nci, "policies": list(pols), "hyst_variants": hyst,
             "segments": seginfo,
+            "extents": {"definitions": ext_names, "spans": {n: [[int(a), int(b), bool(c)] for a, b, c in v] for n, v in ext.items()},
+                        "evaluated_on": "policy all_chron, plain flag, JPY path (needs 'all_chron' in --policies; otherwise real_ext stays zero)",
+                        "real_ext": "[definition, run, col, (n_valid_bars, flagged_in_run, first_flag_latency_hours or -1, flagged_in_prev_48h, flagged_in_next_48h)]; "
+                                    "latency is measured from the definition's own start epoch"},
             "axes": {"flagbars": "[policy, hyst, path, col]", "runs_total": "[policy, hyst, run_gap, path, col]",
                      "blk_runs": "[policy, hyst, block_label, run_gap, path, col] mean runs per block",
                      "blk_share": "same axes: share of blocks with >= 1 run",
-                     "blk_ci_lo/hi": "[policy, hyst, block_label, run_gap, path, headline_col] segment-bootstrap 95% CI of blk_runs",
+                     "blk_ci_lo/hi": "[policy, hyst, block_label, run_gap, path, ci column (index into ci_cols)] segment-bootstrap 95% CI of blk_runs",
                      "real_runs": "[policy, hyst, run, path, col, (n_valid_bars, flagged_in_run, first_flag_latency_hours or -1, flagged_in_prev_48h, flagged_in_next_48h)]",
                      "hyst": "hyst_variants[i]: 1.0 = plain flag; 0.75 / 0.5 = latch that stays ON while the ratio >= that fraction of the entry threshold",
                      "population": "mask_* policies use the ref population (masked bars removed), all_* the full population"},
@@ -739,7 +946,7 @@ def run_tier2(rows: list, base: dict, cfg: dict, writer, hooks: dict) -> dict:
         if D not in pools_by_d:
             pools_by_d[D] = ordered_starts(base, D, cfg["stride"], cfg["stride_class"], cfg["seed"])
         starts, cls = chunk_starts(pools_by_d[D], 0, cfg["tier2_starts"])
-        p_t = mag * shape_vec(shp, D)
+        p_t = mag * shape_vec(shp, D, mag)
         for i, ci in zip(starts, cls):
             i = int(i)
             flags, est = r3_series(base, i, D, p_t)
@@ -786,7 +993,7 @@ def run_all(cfg: dict, hooks: dict | None = None) -> dict:
     rows = w.load_dump(cfg["bars_path"])
     w.setup_ctx(rows, 10, cfg["seed"])
     base = build_base(rows)
-    meta = {"schema": 2, "tool": "run_runlevel_experiment", "chat": cfg["chat"], "limitations": LIMITATIONS,
+    meta = {"schema": 3, "tool": "run_runlevel_experiment", "chat": cfg["chat"], "limitations": LIMITATIONS,
             "config": {k: v for k, v in cfg.items() if k not in ("out_paths",)}, "n_rows": base["N"], "n_ref": int((~base["masked"]).sum()),
             "constants": {"PRE": PRE, "TAIL": TAIL, "POST": POST, "SEP": rl.SEP, "bucket_edges": list(BUCKET_EDGES),
                           "bucket_labels": list(BUCKET_LABELS), "n_ref_stretches": base["n_cl"]},
@@ -794,6 +1001,8 @@ def run_all(cfg: dict, hooks: dict | None = None) -> dict:
     sections = cfg["sections"]
     if "bars" in sections:
         write_bars(cfg["out_paths"]["bars"], base, cfg["policies"])
+    if "series" in sections:
+        meta["series"] = run_series(base, cfg, hooks)
     if "real" in sections:
         meta["real"] = real_pass(base, cfg, hooks)
     if "inj" in sections:
@@ -815,7 +1024,7 @@ def render_text(meta: dict) -> str:
         med = "n/a" if r["median_d_jpy_bps"] is None else f"{r['median_d_jpy_bps']:+.2f}"
         lines.append(f"  {r['run']}: rows {r['n_rows']}, masked {r['n_masked']}, median d_JPY {med} (4i.11: {r['expected_4i11_dev_bps']:+.1f})"
                      + ("" if r.get("dump_route_ok") in (None, True) else "  <-- MISMATCH: dump route differs from 4i.11, do not trust this run"))
-    for key in ("real", "inj", "tier2"):
+    for key in ("series", "real", "inj", "tier2"):
         if key in meta:
             lines.append(f"{key}: " + ", ".join(f"{k}={v}" for k, v in meta[key].items() if isinstance(v, (int, float, str))))
     if "inj" in meta:
@@ -850,6 +1059,7 @@ def parse_args(argv: list) -> argparse.Namespace:
     p.add_argument("--boot", type=int, default=200, help="bootstrap resamples (block CIs and injection stretch-clustered CIs); 0 = no injection CIs")
     p.add_argument("--detail", choices=("full", "headline"), default="full")
     p.add_argument("--policies", default=",".join(POLICIES_DEFAULT), help="gap policies for the real pass: mask_reset, all_chron, mask_carryN, all_carryN, mask_barindex, all_barindex")
+    p.add_argument("--no-dedupe", action="store_true", help="evaluate step_plateau cells that equal the flat shape instead of copying the flat cell (verification only)")
     p.add_argument("--hyst-exit", default=",".join(f"{h:g}" for h in rl.HYST_EXIT), help="hysteresis exit fractions of the entry threshold (the plain flag is always included)")
     p.add_argument("--inj-fills", default=",".join(rl.FILLS), help="window fills computed in injection (must include full)")
     p.add_argument("--paths", default=",".join(PATHS))
@@ -857,6 +1067,10 @@ def parse_args(argv: list) -> argparse.Namespace:
     p.add_argument("--mags", default=",".join(f"{m:g}" for m in MAGS))
     p.add_argument("--shapes", default=",".join(SHAPES))
     p.add_argument("--durs", default=",".join(str(d) for d in DURS))
+    p.add_argument("--series-policies", default=",".join(SERIES_POLICIES), help="gap policies of the series dump (all_chron = what a live consumer sees)")
+    p.add_argument("--series-fills", default=",".join(SERIES_FILLS))
+    p.add_argument("--series-w", default=",".join(str(w_) for w_ in SERIES_W), help="windows of the series dump (any of 3,6,12,24,48; W3 / W48 are optional)")
+    p.add_argument("--run-extents", default="", help="JSON {run1: {start, end}, ...} (bar open times, as REAL_RUNS): adds the 'user' run extent")
     p.add_argument("--tier2-starts", type=int, default=40)
     p.add_argument("--tier2-cap-mb", type=float, default=20.0)
     p.add_argument("--t2-legs", default="GBP_JPY,USD_JPY")
@@ -896,14 +1110,26 @@ def build_config(args: argparse.Namespace, run_date: str) -> dict:
     assert "full" in inj_fills, "--inj-fills must include 'full' (the headline columns use it)"
     cfg_lists = {
         "paths": _csv(args.paths, str, PATHS), "signs": _csv(args.signs, int, (1, -1)), "mags": _csv(args.mags, float),
-        "shapes": _csv(args.shapes, str, SHAPES), "durs": _csv(args.durs, int),
+        "shapes": _csv(args.shapes, str), "durs": _csv(args.durs, int),
         "t2_legs": _csv(args.t2_legs, str, ("GBP_JPY", "USD_JPY")), "t2_mags": _csv(args.t2_mags, float),
         "t2_shapes": _csv(args.t2_shapes, str, SHAPES), "t2_durs": _csv(args.t2_durs, int),
     }
+    assert all(sh in SHAPES_BASE or SP_RE.fullmatch(sh) for sh in cfg_lists["shapes"]), f"--shapes must be among {SHAPES_BASE} or sp<W>_p<P>"
+    assert all(m_ > 0 for m_ in cfg_lists["mags"]) and all(d_ >= 1 for d_ in cfg_lists["durs"]), "magnitudes and durations must be positive"
+    series_pols = _csv(args.series_policies, str)
+    for pol in series_pols:
+        parse_policy(pol)
+    series_fills = _csv(args.series_fills, str, rl.FILLS)
+    series_w = _csv(args.series_w, int, rl.W_GRID)
+    user_ext = None
+    if args.run_extents:
+        assert Path(args.run_extents).exists(), f"--run-extents file not found: {args.run_extents}"
+        user_ext = json.loads(Path(args.run_extents).read_text())
+        assert isinstance(user_ext, dict) and all({"start", "end"} <= set(v) for v in user_ext.values()), "--run-extents: {run: {start, end}}"
     stem = f"chat{args.chat}_{run_date}" + (f"_{args.tag}" if args.tag else "")
     d = Path(args.out_dir)
     paths = {"meta": str(d / f"runlevel_meta_{stem}.json"), "bars": str(d / f"runlevel_bars_{stem}.npz"),
-             "real": str(d / f"runlevel_real_{stem}.npz"), "inj": str(d / f"runlevel_inj_{stem}.npz"),
+             "series": str(d / f"runlevel_series_{stem}.npz"), "real": str(d / f"runlevel_real_{stem}.npz"), "inj": str(d / f"runlevel_inj_{stem}.npz"),
              "inj_ckpt": str(d / f"runlevel_inj_{stem}_ckpt{{k}}.npz"), "tier2": str(d / f"runlevel_tier2_{stem}.jsonl")}
     for key, pth in paths.items():
         if key == "inj_ckpt":
@@ -914,7 +1140,8 @@ def build_config(args: argparse.Namespace, run_date: str) -> dict:
     return {"chat": args.chat, "bars_path": args.bars, "tag": args.tag, "sections": sections, "seed": args.seed, "stride": args.stride,
             "stride_class": sc, "starts_per_cell": spc, "checkpoints": cks, "blocks_per_length": args.blocks_per_length, "boot": args.boot,
             "detail": args.detail, "policies": policies, "hyst": hyst, "inj_fills": inj_fills, "tier2_starts": args.tier2_starts,
-            "tier2_cap_mb": args.tier2_cap_mb, "out_paths": paths, **cfg_lists}
+            "tier2_cap_mb": args.tier2_cap_mb, "series_policies": series_pols, "series_fills": series_fills, "series_w": series_w,
+            "user_extents": user_ext, "dedupe": not args.no_dedupe, "out_paths": paths, **cfg_lists}
 
 
 def main(argv: list | None = None) -> None:

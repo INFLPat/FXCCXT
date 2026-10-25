@@ -1,4 +1,4 @@
-# version: 261025
+# version: 261025b
 """
 run_runlevel_report.py  (fx_trader/run_runlevel_report.py)
 
@@ -16,7 +16,10 @@ Inputs (all in --dir, produced by run_runlevel_experiment.py; tags as used on th
 
 Columns shown: REPORT_COLS (a fixed, NON-selective sample of the headline columns, chosen for coverage of window,
 scale and statistic, NOT because they perform well) plus anything in --cols (comma list of column ids, e.g.
-"median|W12|full|trailing|raw|abs|4"; headline columns only).
+"median|W12|full|trailing|raw|abs|4"; tier-2 columns only: median / mean, W6 / 12 / 24, trailing, full fill).
+14p4-vi: artefacts now carry ci_cols (tier-2 columns with block / stretch-clustered CIs) next to hcols (the bank: tiers 1 + 2);
+the survey CSV also lists tail / cover / the 2.5 bps and step_plateau cells and the real runs under every stored run extent
+(blank for artefacts that predate them). Older artefacts without ci_cols are read with hcols = ci_cols.
 
 Run (from fx_trader/): python3 run_runlevel_report.py --chat 14 --date 261025 --real-tag r2real
   --inj-tags r2injHUB,r2injCHF,r2injEUR,r2injJPY --t2-tag r2t2 --pol-tag r2pol --out RUNLEVEL_RESULTS_14p4-iv.md --survey-out reports/runlevel_survey_chat14_261025.csv
@@ -73,6 +76,11 @@ def pick_cols(columns: list, extra: list) -> list:
     return cols
 
 
+def ci_index(z: dict, ci: int) -> int:
+    """Position of column ci in the CI arrays (ci_cols; older artefacts: hcols)."""
+    return list(z["ci_cols"] if "ci_cols" in z else z["hcols"]).index(ci)
+
+
 def cell_index(axes: dict, pi: int, si: int, mi: int, shi: int, di: int) -> int:
     S, M, H, D = len(axes["signs"]), len(axes["mags"]), len(axes["shapes"]), len(axes["durs"])
     return (((pi * S + si) * M + mi) * H + shi) * D + di
@@ -84,7 +92,6 @@ def section_real(meta: dict, z: dict, cols: list) -> str:
     ids = r["columns"]
     pols = r["policies"]
     hyst = r["hyst_variants"]
-    hc = list(z["hcols"])
     assert "mask_reset" in pols and "all_chron" in pols, "real artefact needs the default policies"
     pm, pa = pols.index("mask_reset"), pols.index("all_chron")
     gi3 = r["run_gaps"].index(3)
@@ -101,7 +108,7 @@ def section_real(meta: dict, z: dict, cols: list) -> str:
     out += ["### Block false-run rate (mean runs per block, RUN_GAP 3, ref, plain flag; JPY path; 95% segment-bootstrap CI)", ""]
     rows = []
     for c in cols:
-        i, h = ids.index(c), hc.index(ids.index(c))
+        i, h = ids.index(c), ci_index(z, ids.index(c))
         cells = [c]
         for lab in ("6", "12", "24", "48"):
             li = bl.index(lab)
@@ -196,14 +203,13 @@ def section_injection(runs: list, cols: list) -> str:
         ci = ids.index(c)
         for meta, z in runs:
             ax = meta["inj"]["cells_axes"]
-            hcols = list(z["hcols"])
-            h = hcols.index(ci)
+            h, k = list(z["hcols"]).index(ci), ci_index(z, ci)
             di, mi, shi = ax["durs"].index(24), ax["mags"].index(3.0), ax["shapes"].index("flat")
             kp, kn = cell_index(ax, 0, 0, mi, shi, di), cell_index(ax, 0, 1, mi, shi, di) if len(ax["signs"]) > 1 else None
             bkt = "/".join(fmt(z["hb_det"][b, kp, h] / z["n_trials_bucket"][b, di]) if z["n_trials_bucket"][b, di] else "-" for b in range(len(bl)))
             rows.append([c, PATH_SHORT[ax["paths"][0]], fmt(z["det"][kp, ci] / z["n_trials"][di]),
                          fmt(z["det"][kn, ci] / z["n_trials"][di]) if kn is not None else "n/a",
-                         f"[{fmt(z['ci_det_lo'][kp, h])}, {fmt(z['ci_det_hi'][kp, h])}]" if "ci_det_lo" in z else "n/a", bkt])
+                         f"[{fmt(z['ci_det_lo'][kp, k])}, {fmt(z['ci_det_hi'][kp, k])}]" if "ci_det_lo" in z else "n/a", bkt])
     out += [md_table(["column", "path", "+3 bps", "-3 bps", "CI of +", "by bucket " + "/".join(bl)], rows),
             f"Trials per bucket at D = 24 (first path): {[int(v) for v in runs[0][1]['n_trials_bucket'][:, first['cells_axes']['durs'].index(24)]]}", ""]
     out += ["### Hysteresis on the run side: share of the 24 post-run bars still flagged, and share of run bars flagged (6 bps flat, D = 24 h, + sign)", ""]
@@ -257,16 +263,19 @@ def build_survey(args: argparse.Namespace) -> str:
     pm, pa, gi3 = pols.index("mask_reset"), pols.index("all_chron"), r["run_gaps"].index(3)
     runs = [load_pair(d, "inj", stem, t) for t in args.inj_tags.split(",") if t]
     assert runs, "survey needs --inj-tags"
-    head = ["column", "ref_flagbars_JPY", "ref_runs_gap3_JPY", "real_runs_detected_of_6", "real_median_latency_h"]
+    ext = r.get("extents", {}).get("definitions", [])
+    head = ["column", "ref_flagbars_JPY", "ref_runs_gap3_JPY", "real_runs_detected_of_6", "real_median_latency_h"] + [f"real_ext_{n}_detected_of_6" for n in ext]
     for meta, _z in runs:
         p = PATH_SHORT[meta["inj"]["cells_axes"]["paths"][0]]
-        head += [f"det_{p}_3bps_D24", f"det_{p}_4bps_D12", f"det_{p}_4bps_D24", f"firstflag_h_{p}_4bps_D24", f"clean_det_{p}_D24"]
+        head += [f"det_{p}_3bps_D24", f"det_{p}_4bps_D12", f"det_{p}_4bps_D24", f"firstflag_h_{p}_4bps_D24", f"clean_det_{p}_D24",
+                 f"det_{p}_2.5bps_D24", f"cover_{p}_4bps_D24", f"tail_{p}_4bps_D24", f"clean_tail_{p}_D24", f"det_{p}_step6_plat3_D24"]
     rows = [",".join(head)]
     for ci, c in enumerate(ids):
         lats = [z_r["real_runs"][pa, 0, ri, 3, ci, 2] for ri in range(len(r["runs"]))]
         hit = sorted(float(v) for v in lats if v >= 0)
         cells = [c, str(int(z_r["flagbars"][pm, 0, 3, ci])), str(int(z_r["runs_total"][pm, 0, gi3, 3, ci])), str(len(hit)),
                  fmt(hit[len(hit) // 2], 1) if hit else ""]
+        cells += [str(int((z_r["real_ext"][ei, :, ci, 2] >= 0).sum())) if "real_ext" in z_r else "" for ei in range(len(ext))]
         for meta, z in runs:
             ax = meta["inj"]["cells_axes"]
             assert meta["inj"]["columns"][ci] == c, "injection and real column layouts differ"
@@ -278,6 +287,13 @@ def build_survey(args: argparse.Namespace) -> str:
             dt = z["det"][k424, ci]
             cells += [fmt(z["det"][k3, ci] / z["n_trials"][d24], 3), fmt(z["det"][k412, ci] / z["n_trials"][d12], 3),
                       fmt(dt / z["n_trials"][d24], 3), fmt(z["lat"][k424, ci] / dt, 1) if dt else "", fmt(z["c_det"][d24, ci] / z["n_trials"][d24], 4)]
+            k25 = cell_index(ax, 0, 0, ax["mags"].index(2.5), fl, d24) if 2.5 in ax["mags"] else None
+            ksp = cell_index(ax, 0, 0, ax["mags"].index(6.0), ax["shapes"].index("sp3_p3"), d24) if "sp3_p3" in ax["shapes"] and 6.0 in ax["mags"] else None
+            tv = z["tail_valid"][d24]
+            cells += [fmt(z["det"][k25, ci] / z["n_trials"][d24], 3) if k25 is not None else "",
+                      fmt(z["cover"][k424, ci] / (24 * z["n_trials"][d24]), 3), fmt(z["tail"][k424, ci] / tv, 3) if tv else "",
+                      fmt(z["c_tail"][d24, ci] / tv, 4) if tv else "",
+                      fmt(z["det"][ksp, ci] / z["n_trials"][d24], 3) if ksp is not None else ""]
         rows.append(",".join(cells))
     return "\n".join(rows) + "\n"
 
@@ -288,13 +304,13 @@ def build_report(args: argparse.Namespace) -> str:
     extra = [c for c in args.cols.split(",") if c]
     meta_r, z_r = load_pair(d, "real", stem, args.real_tag)
     cols = pick_cols(meta_r["real"]["columns"], extra)
-    hc = set(int(i) for i in z_r["hcols"])
+    hc = set(int(i) for i in (z_r["ci_cols"] if "ci_cols" in z_r else z_r["hcols"]))
     for c in cols:
         assert meta_r["real"]["columns"].index(c) in hc, f"column {c!r} is not a headline column (block CIs and class splits exist for headline columns only)"
     parts = [f"<!-- version: {args.date} -->", f"# Run-level view for persistent arm offsets: numbers reference (chat {args.chat}, files dated {args.date})", "",
              "REPORT ONLY. Nothing is chosen or recommended here. Generated by `run_runlevel_report.py` from the local artefacts listed in CONTEXT_HANDOFF 4l.4 "
              f"(tags: real `{args.real_tag}`, injection `{args.inj_tags}`, tier 2 `{args.t2_tag or 'none'}`, policies `{args.pol_tag or 'none'}`). "
-             "Columns are a fixed, non-selective sample of the headline set; the artefacts hold all 6,344 columns. Column id = statistic|window|fill|causality|input|scale|threshold.", "",
+             f"Columns are a fixed, non-selective sample of the headline set; the artefacts hold all {len(meta_r['real']['columns']):,} columns. Column id = statistic|window|fill|causality|input|scale|threshold.", "",
              "Dump-route check (median d_JPY of the six real runs against the 4i.11 deviations): " + ", ".join(f"{r['run']} {'n/a' if r['median_d_jpy_bps'] is None else format(r['median_d_jpy_bps'], '+.2f')} vs {r['expected_4i11_dev_bps']:+.1f}" for r in meta_r["real_run_check"]) + ".", "",
              section_real(meta_r, z_r, cols)]
     if args.pol_tag:

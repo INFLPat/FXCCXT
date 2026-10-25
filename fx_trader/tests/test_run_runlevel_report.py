@@ -1,4 +1,4 @@
-# version: 261025
+# version: 261025b
 """
 tests/test_run_runlevel_report.py
 
@@ -35,7 +35,7 @@ def _artefacts():
     (d / f"runlevel_meta_{STEM}_re.json").write_text(json.dumps(meta))
     pc = _real_cfg(policies=["mask_reset", "all_chron", "all_carry3", "all_barindex"], out_paths={"real": str(d / f"runlevel_real_{STEM}_po.npz")})
     (d / f"runlevel_meta_{STEM}_po.json").write_text(json.dumps(base_meta | {"real": x.real_pass(b, pc, {})}))
-    ic = _inj_cfg(b, signs=[1, -1], mags=[2.0, 3.0, 4.0, 6.0, 9.0, 15.0], shapes=list(x.SHAPES), durs=[6, 12, 24, 72], checkpoints=[8], paths=["arm:JPY"])
+    ic = _inj_cfg(b, signs=[1, -1], mags=[2.0, 2.5, 3.0, 4.0, 6.0, 9.0, 15.0], shapes=["flat", "ramp", "sp3_p3"], durs=[12, 24, 72], checkpoints=[8], paths=["arm:JPY"])
     ic["out_paths"] = {"inj_ckpt": str(d / "ck{k}.npz"), "inj": str(d / f"runlevel_inj_{STEM}_ij.npz")}
     (d / f"runlevel_meta_{STEM}_ij.json").write_text(json.dumps(base_meta | {"inj": x.run_injection(b, ic, {})}))
     methods = ["unweighted|LS", "unweighted|H1.0|spread", "unweighted|H1.0|mad"] + [f"m{i}" for i in range(21)] + ["inv_spread|LS", "inv_spread|H1.0|spread", "inv_spread2|H1.0|spread"]
@@ -85,6 +85,11 @@ def test_survey_lookup():
     assert all(ln.count(",") == n for ln in lines), "ragged csv (column ids contain no commas)"
     row = [ln for ln in lines if ln.startswith("median|W6|full|trailing|raw|abs|3,")][0].split(",")
     assert int(row[3]) >= 1, "the planted run is detected by the W6 / abs 3 column"
+    head = lines[0].split(",")
+    assert "real_ext_detector_detected_of_6" in head and "tail_JPY_4bps_D24" in head and "det_JPY_step6_plat3_D24" in head and "det_JPY_2.5bps_D24" in head
+    g = lambda name: row[head.index(name)]
+    assert int(g("real_ext_detector_detected_of_6")) == int(row[3]), "the detector extent is the legacy real-run table"
+    assert 0.0 <= float(g("det_JPY_step6_plat3_D24")) <= float(g("det_JPY_4bps_D24")) + 1e-9 and float(g("det_JPY_2.5bps_D24")) <= float(g("det_JPY_3bps_D24")) + 1e-9
     assert rr.build_survey(a) == text, "deterministic"
     print("survey: one row per column, consistent fields, planted run found.")
 

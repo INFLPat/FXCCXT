@@ -1,8 +1,8 @@
-# version: 261023
+# version: 261025
 """
 currency_graph/runlevel.py
 
-Run-level statistics for PERSISTENT offsets (chat 14p4-iv). Universe-agnostic
+Run-level statistics for PERSISTENT offsets (chat 14p4-iv; flag bank added in 14p4-vi). Universe-agnostic
 core: it knows nothing about FX, arms or hubs. It takes 2-D arrays (rows =
 independent series, columns = consecutive bars; NaN = bar not available) and
 returns rolling statistics, run flags and block run counts.
@@ -14,6 +14,9 @@ tests/test_runlevel.py to 1e-12).
 
 STATISTICS (all computed; none chosen):
   median, mean, trim20 (20% trimmed mean, k//5 cut from each end),
+  hl (Hodges-Lehmann: median of all Walsh averages (x_i + x_j) / 2, i <= j, over the valid bars),
+  huber (Huber M-estimate of location: start at the window median, scale s = 1.4826 x window MAD,
+         HUBER_ITERS fixed steps mu += s x mean(clip((x - mu) / s, +-HUBER_C)); mu = median where s = 0),
   signpers (mean of sign(x) over the window, in [-1, 1]; NO magnitude gate -
   a gated version would couple the statistic to a threshold),
   ewma (half-life HL bars), cusum (two-sided, signed: +S or -S, whichever is
@@ -27,8 +30,9 @@ WINDOWS: trailing = bars t-W+1..t; centred = bars t-W//2..t+W//2 (HINDSIGHT:
 INPUTS: raw (bps), norm (x / path spread), none (signpers is sign-only).
 SCALES (raw input): path (current path summed spread), roll (trailing median
   of path spread), bar (bar mean pair spread), hour (same-hour trailing
-  median), abs (1, i.e. bps), rz (robust z: 1.4826 x trailing MAD of the base
-  series). Crypto bars have no spread: spread-based scales are then undefined
+  median), abs (1, i.e. bps), rz (robust z: max(1.4826 x trailing MAD of the base
+  series, floor); the floor is swept over RZ_FLOORS = 0.1 / 0.25 / 0.5 / 1.0 bps and the
+  scale names are rz, rz0.25, rz0.5, rz1). Crypto bars have no spread: spread-based scales are then undefined
   and only abs / rz / norm-free statistics apply.
 FLAG: |statistic| / scale >= threshold (NaN anywhere = not flagged).
 HYSTERESIS (latch): enter at ratio >= thr, stay ON while ratio >= frac x thr
@@ -59,11 +63,27 @@ W_GRID = (3, 6, 12, 24, 48)
 FILLS = ("full", "half", "third", "min3")
 CAUSALITY = ("trailing", "centred")
 WINDOWED = ("median", "mean", "trim20")
+ROBUST = ("hl", "huber")            # windowed, heavier (Walsh averages / iterations); layout windows = ROBUST_W
+ROBUST_W = (6, 12, 24)
+HUBER_C = 1.345
+HUBER_ITERS = 20
+MAD_SCALE = 1.4826
+CHUNK = 2048                        # columns per chunk in the heavy windowed statistics (memory bound)
 SIGN_STAT = "signpers"
-SCALES_RAW = ("path", "roll", "bar", "hour", "abs", "rz")
+RZ_FLOORS = (0.1, 0.25, 0.5, 1.0)   # robust-z floor in bps; the first keeps the legacy scale name "rz"
+
+
+def rz_name(floor: float) -> str:
+    return "rz" if floor == RZ_FLOORS[0] else f"rz{floor:g}"
+
+
+RZ_NAMES = tuple(rz_name(f) for f in RZ_FLOORS)
+SCALES_RAW = ("path", "roll", "bar", "hour", "abs") + RZ_NAMES
 RATIO_SCALES = ("path", "roll", "bar", "hour", "unit")
-RATIO_GRID = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
-ABS_GRID = (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0)
+ARRAY_SCALES = ("path", "roll", "bar", "hour") + RZ_NAMES      # scales that need a per-bar array
+# Dense ladders (14p4-vi): the 1-2 bps noise cliff is covered by 0.25 bps steps; every legacy rung is kept.
+RATIO_GRID = (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0)
+ABS_GRID = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0)
 RZ_GRID = (2.0, 3.0, 4.0, 5.0, 6.0)
 SHARE_GRID = (0.5, 0.67, 0.8, 0.9, 1.0)
 CUSUM_K_RAW = (0.5, 1.0, 2.0)
@@ -76,6 +96,16 @@ BLOCK_LENGTHS = (1, 3, 6, 12, 24, 48)
 BLOCK_LABELS = tuple(str(x) for x in BLOCK_LENGTHS) + ("mixed",)
 HEADLINE_W = (6, 12, 24)
 HYST_EXIT = (0.75, 0.5)
+# Named PURPOSES (14p4-vi). Configuration only: they select statistics from the same series; no scale, threshold or
+# estimator is chosen here (the user decides). CORRECT subtracts the estimate only where the MASK flag fires.
+PROFILES = {
+    "MASK": {"purpose": "strength-fault mask: flag bars inside a persistent arm offset for consumers (trailing = live-capable)",
+             "stats": ("median", "mean", "trim20", "hl", "huber"), "windows": (12, 24), "fills": ("full",)},
+    "ALERT": {"purpose": "early warning: latency over false alarms",
+              "stats": ("median", "hl", "huber", "ewma", "cusum"), "windows": (6,), "fills": ("full", "-")},
+    "CORRECT": {"purpose": "R3 offset correction: the estimate is subtracted only where a MASK flag fires",
+                "stats": ("median", "hl", "huber"), "windows": (12,), "fills": ("full",), "gate": "MASK"},
+}
 
 Spec = namedtuple("Spec", "sid stat param fill caus inp")
 Group = namedtuple("Group", "spec scale thr col0 headline")
@@ -160,6 +190,50 @@ def sign_stat(V) -> dict:
     return {"cnt": k, "sign": np.where(k > 0, s / np.where(k > 0, k, 1), np.nan)}
 
 
+def hl_stat(V):
+    """Hodges-Lehmann estimate per window: median of the Walsh averages (x_i + x_j) / 2, i <= j, over the valid
+    bars. V (n, T, win) -> (n, T); NaN where the window has no valid bar. Chunked over T (memory bound)."""
+    assert V.ndim == 3, "V must be 3-D"
+    n, T, win = V.shape
+    iu, ju = np.triu_indices(win)
+    npair = len(iu)
+    out = np.full((n, T), np.nan)
+    for a in range(0, T, CHUNK):
+        Vc = np.asarray(V[:, a:a + CHUNK])
+        k = (~np.isnan(Vc)).sum(axis=-1)
+        S = np.sort(0.5 * (Vc[..., iu] + Vc[..., ju]), axis=-1)       # a NaN pair average sorts last
+        m = k * (k + 1) // 2                                            # valid pairs
+        lo = np.clip((m - 1) // 2, 0, npair - 1)
+        hi = np.clip(m // 2, 0, npair - 1)
+        x = np.take_along_axis(S, lo[..., None], axis=-1)[..., 0]
+        y = np.take_along_axis(S, hi[..., None], axis=-1)[..., 0]
+        out[:, a:a + CHUNK] = np.where(m > 0, 0.5 * (x + y), np.nan)
+    return out
+
+
+def huber_stat(V):
+    """Huber M-estimate of location per window (definition in the module docstring). V (n, T, win) -> (n, T)."""
+    assert V.ndim == 3, "V must be 3-D"
+    n, T, win = V.shape
+    out = np.full((n, T), np.nan)
+    for a in range(0, T, CHUNK):
+        Vc = np.asarray(V[:, a:a + CHUNK])
+        nan = np.isnan(Vc)
+        o = order_stats(Vc)
+        cnt, mu = o["cnt"], o["median"]
+        s = MAD_SCALE * order_stats(np.abs(Vc - mu[..., None]))["median"]
+        pos = (cnt > 0) & (s > 0)
+        ss = np.where(pos, s, 1.0)
+        V0 = np.where(nan, 0.0, Vc)
+        kk = np.where(cnt > 0, cnt, 1)
+        mu = np.where(cnt > 0, mu, 0.0)
+        for _ in range(HUBER_ITERS):
+            psi = np.where(nan, 0.0, np.clip((V0 - mu[..., None]) / ss[..., None], -HUBER_C, HUBER_C))
+            mu = np.where(pos, mu + ss * psi.sum(-1) / kk, mu)
+        out[:, a:a + CHUNK] = np.where(cnt > 0, mu, np.nan)
+    return out
+
+
 def apply_fill(stat, cnt, nominal: int, fill: str):
     return np.where(cnt >= min_count(nominal, fill), stat, np.nan)
 
@@ -180,6 +254,15 @@ def ref_stat(values, kind: str) -> float:
         return sum(core) / len(core)
     if kind == "signpers":
         return sum((1 if x > 0 else -1 if x < 0 else 0) for x in v) / len(v)
+    if kind == "hl":
+        return statistics.median([(v[i] + v[j]) / 2.0 for i in range(len(v)) for j in range(i, len(v))])
+    if kind == "huber":
+        mu = statistics.median(v)
+        sc = MAD_SCALE * statistics.median([abs(x - mu) for x in v])
+        if sc > 0:
+            for _ in range(HUBER_ITERS):
+                mu += sc * sum(max(-HUBER_C, min(HUBER_C, (x - mu) / sc)) for x in v) / len(v)
+        return mu
     raise ValueError(f"unknown statistic {kind}")
 
 
@@ -257,6 +340,10 @@ def build_specs(fills) -> list:
                 for caus in CAUSALITY:
                     for fill in fills:
                         out.append(make_spec(stat, W, fill, caus, inp))
+        for stat in ROBUST:                 # trailing only in the layout (the centred versions are hindsight and
+            for W in ROBUST_W:              # twice the cost); series_specs() keeps both causalities for the series dump
+                for fill in fills:
+                    out.append(make_spec(stat, W, fill, "trailing", inp))
         for hl in EWMA_HL:
             out.append(make_spec("ewma", hl, "-", "trailing", inp))
         for k in (CUSUM_K_RAW if inp == "raw" else CUSUM_K_NORM):
@@ -277,27 +364,44 @@ def grid_for(scale: str) -> tuple:
         return RATIO_GRID
     if scale == "abs":
         return ABS_GRID
-    if scale == "rz":
+    if scale in RZ_NAMES:
         return RZ_GRID
     if scale == "share":
         return SHARE_GRID
     raise ValueError(f"unknown scale {scale}")
 
 
+def tier(sp: Spec, scale: str) -> int:
+    """2 = headline (class / bucket / hysteresis / stretch CIs), 1 = bank (class / bucket / hysteresis, no CIs),
+    0 = totals only. Trailing statistics only (centred = hindsight)."""
+    if sp.caus != "trailing" or sp.inp == "none":
+        return 0
+    raw_ok = scale in ("path", "abs", "rz")
+    if sp.inp == "raw" and not raw_ok:
+        return 0
+    if sp.stat in WINDOWED + ROBUST:
+        if sp.fill != "full" or sp.param not in HEADLINE_W:
+            return 0
+        return 2 if sp.stat in ("median", "mean") else 1
+    if sp.stat == "ewma":
+        return 1 if sp.param in HEADLINE_W else 0
+    return 1 if sp.stat == "cusum" else 0
+
+
 def is_headline(sp: Spec, scale: str) -> bool:
-    """Compact subset kept per start-hour class and with block CIs."""
-    return (sp.stat in ("median", "mean") and sp.param in HEADLINE_W and sp.caus == "trailing" and sp.fill == "full"
-            and ((sp.inp == "raw" and scale in ("path", "abs", "rz")) or sp.inp == "norm"))
+    """The compact CI subset (per start-hour class, with block and stretch-clustered CIs)."""
+    return tier(sp, scale) == 2
 
 
 def build_layout(fills, headline_only: bool = False) -> tuple:
     """(specs, groups, n_columns). A group = (spec, scale) with its threshold grid;
-    columns are the concatenated thresholds, in order."""
+    columns are the concatenated thresholds, in order. Group.headline = tier (0 / 1 bank / 2 headline);
+    headline_only keeps tiers 1 and 2."""
     specs, groups, c = [], [], 0
     for sp in build_specs(fills):
         gs = []
         for sc in scales_for(sp.inp):
-            h = is_headline(sp, sc)
+            h = tier(sp, sc)
             if headline_only and not h:
                 continue
             gs.append((sc, grid_for(sc), h))
@@ -328,7 +432,7 @@ def iter_stats(Xs: dict, specs, t0: int, t1: int, pad: bool):
     assert specs, "no specs"
     win_groups, seq_groups = {}, {}
     for i, sp in enumerate(specs):
-        if sp.stat in WINDOWED or sp.stat == SIGN_STAT:
+        if sp.stat in WINDOWED or sp.stat in ROBUST or sp.stat == SIGN_STAT:
             win_groups.setdefault((sp.inp, sp.caus, sp.param), []).append(i)
         else:
             seq_groups.setdefault((sp.stat, sp.inp, sp.param), []).append(i)
@@ -338,16 +442,21 @@ def iter_stats(Xs: dict, specs, t0: int, t1: int, pad: bool):
         nominal = back + fwd + 1
         V = _win_view(X, back, fwd, t0, t1, pad)
         miss = np.isnan(X[:, t0:t1])
-        need_order = any(specs[i].stat in WINDOWED for i in idxs)
-        need_sign = any(specs[i].stat == SIGN_STAT for i in idxs)
-        o = order_stats(V) if need_order else None
-        sg = sign_stat(V) if need_sign else None
+        kinds = {specs[i].stat for i in idxs}
+        o = order_stats(V) if kinds & set(WINDOWED + ROBUST) else None
+        sg = sign_stat(V) if SIGN_STAT in kinds else None
+        heavy = {}
+        if "hl" in kinds:
+            heavy["hl"] = hl_stat(V)
+        if "huber" in kinds:
+            heavy["huber"] = huber_stat(V)
         for i in idxs:
             sp = specs[i]
             if sp.stat == SIGN_STAT:
                 yield i, _gate(apply_fill(sg["sign"], sg["cnt"], nominal, sp.fill), miss)
             else:
-                yield i, _gate(apply_fill(o[sp.stat], o["cnt"], nominal, sp.fill), miss)
+                src = heavy[sp.stat] if sp.stat in ROBUST else o[sp.stat]
+                yield i, _gate(apply_fill(src, o["cnt"], nominal, sp.fill), miss)
     for (stat, inp, param), idxs in seq_groups.items():
         X = np.asarray(Xs[inp], float)
         full = ewma(X, param) if stat == "ewma" else cusum(X, param)
@@ -359,11 +468,54 @@ def iter_stats(Xs: dict, specs, t0: int, t1: int, pad: bool):
 def ratio_array(S, scale: str, scale_arr):
     """|S| / scale for the scales that need an array; |S| otherwise. NaN where undefined."""
     a = np.abs(S)
-    if scale in ("path", "roll", "bar", "hour", "rz"):
+    if scale in ARRAY_SCALES:
         assert scale_arr is not None, f"scale '{scale}' needs an array"
         with np.errstate(invalid="ignore", divide="ignore"):
             return np.where(scale_arr > 0, a / scale_arr, np.nan)
     return a
+
+
+# ---------------------------------------------------- series, profiles, flags
+def series_specs(fills, ws) -> list:
+    """Specs of the threshold-free SERIES dump: every windowed statistic (median, mean, trim20, hl, huber) at the
+    windows `ws`, all causalities, the given fills, raw and normalised input, plus EWMA and CUSUM state."""
+    assert fills and ws, "fills and ws must not be empty"
+    out = []
+    for inp in ("raw", "norm"):
+        for stat in WINDOWED + ROBUST:
+            for W in ws:
+                for caus in CAUSALITY:
+                    for fill in fills:
+                        out.append(make_spec(stat, W, fill, caus, inp))
+        for hl in EWMA_HL:
+            out.append(make_spec("ewma", hl, "-", "trailing", inp))
+        for k in (CUSUM_K_RAW if inp == "raw" else CUSUM_K_NORM):
+            out.append(make_spec("cusum", k, "-", "trailing", inp))
+    return out
+
+
+def profile_spec_ids(name: str, specs) -> list:
+    """Spec ids (trailing only) belonging to a named purpose. Selection only: no scale or threshold."""
+    assert name in PROFILES, f"unknown profile {name}"
+    pr = PROFILES[name]
+    return [sp.sid for sp in specs if sp.caus == "trailing" and sp.stat in pr["stats"] and sp.fill in pr["fills"]
+            and (sp.stat == "cusum" or sp.param in pr["windows"])]
+
+
+def apply_flags(S, scale_arr, thr: float, scale: str = "abs", exit_frac: float = 1.0):
+    """Flag |S| / scale >= thr from a stored statistic series (no rerun needed). exit_frac < 1 = hysteresis latch."""
+    assert thr > 0 and 0 < exit_frac <= 1, "bad threshold or exit fraction"
+    R = ratio_array(np.asarray(S, float), scale, scale_arr)
+    with np.errstate(invalid="ignore"):
+        ent = R >= thr
+        return ent if exit_frac == 1.0 else latch(ent, R >= thr * exit_frac)
+
+
+def gated_estimate(S_est, gate):
+    """CORRECT purpose: the offset estimate where the MASK flag fires, else 0 (no correction)."""
+    gate = np.asarray(gate, bool)
+    assert gate.shape == np.shape(S_est), "gate and estimate must have one shape"
+    return np.where(gate & ~np.isnan(S_est), S_est, 0.0)
 
 
 # ----------------------------------------------------------- hysteresis
