@@ -1,4 +1,4 @@
-# version: 261025b
+# version: 261026
 """
 run_runlevel_report.py  (fx_trader/run_runlevel_report.py)
 
@@ -12,7 +12,8 @@ Inputs (all in --dir, produced by run_runlevel_experiment.py; tags as used on th
   runlevel_meta_<stem>_<tag>.json + runlevel_inj_<stem>_<tag>.npz       (--inj-tags, comma list, one per path)
   runlevel_tier2_<stem>_<tag>.jsonl                                     (--t2-tag, optional)
   runlevel_real_<stem>_<tag>.npz                                        (--pol-tag, optional extra gap policies)
-  <stem> = chat<N>_<YYMMDD>; --date is the run date of the files.
+  <stem> = chat<N>_<YYMMDD>; --date is the run date of the files. --real-date (optional) is the run date of the REAL artefact only,
+  for a later real-only re-run (e.g. --run-extents) whose date differs from the injection files.
 
 Columns shown: REPORT_COLS (a fixed, NON-selective sample of the headline columns, chosen for coverage of window,
 scale and statistic, NOT because they perform well) plus anything in --cols (comma list of column ids, e.g.
@@ -67,6 +68,13 @@ def load_pair(d: Path, kind: str, stem: str, tag: str) -> tuple:
     with np.load(arr_p) as z:
         arrays = {k: z[k] for k in z.files}
     return json.loads(meta_p.read_text()), arrays
+
+
+def real_stem(args: argparse.Namespace) -> str:
+    """Stem of the REAL artefact: --real-date when given (a real-only re-run, e.g. --run-extents, has its own run date), else --date."""
+    rd = args.real_date or args.date
+    assert re.fullmatch(r"\d{6}", rd), "--real-date must be YYMMDD"
+    return f"chat{args.chat}_{rd}"
 
 
 def pick_cols(columns: list, extra: list) -> list:
@@ -257,7 +265,7 @@ def build_survey(args: argparse.Namespace) -> str:
     """ONE csv row per column of the full layout (all statistics, windows, fills, scales, thresholds): a lookup so a later chat
     need not re-upload artefacts. Fields are fixed and non-selective. Injection = flat, + sign, R1, final checkpoint totals."""
     d, stem = Path(args.dir), f"chat{args.chat}_{args.date}"
-    meta_r, z_r = load_pair(d, "real", stem, args.real_tag)
+    meta_r, z_r = load_pair(d, "real", real_stem(args), args.real_tag)
     r = meta_r["real"]
     ids, pols = r["columns"], r["policies"]
     pm, pa, gi3 = pols.index("mask_reset"), pols.index("all_chron"), r["run_gaps"].index(3)
@@ -302,7 +310,7 @@ def build_survey(args: argparse.Namespace) -> str:
 def build_report(args: argparse.Namespace) -> str:
     d, stem = Path(args.dir), f"chat{args.chat}_{args.date}"
     extra = [c for c in args.cols.split(",") if c]
-    meta_r, z_r = load_pair(d, "real", stem, args.real_tag)
+    meta_r, z_r = load_pair(d, "real", real_stem(args), args.real_tag)
     cols = pick_cols(meta_r["real"]["columns"], extra)
     hc = set(int(i) for i in (z_r["ci_cols"] if "ci_cols" in z_r else z_r["hcols"]))
     for c in cols:
@@ -337,6 +345,7 @@ def parse_args(argv: list) -> argparse.Namespace:
     p.add_argument("--date", required=True, help="YYMMDD of the artefact files")
     p.add_argument("--dir", default="reports")
     p.add_argument("--real-tag", required=True)
+    p.add_argument("--real-date", default="", help="YYMMDD of the REAL artefact when it differs from --date (a later real-only run, e.g. with --run-extents)")
     p.add_argument("--inj-tags", default="")
     p.add_argument("--t2-tag", default="")
     p.add_argument("--pol-tag", default="")

@@ -31,6 +31,8 @@ fx_trader/reports/*.json
 fx_trader/reports/*.txt
 fx_trader/reports/*.jsonl
 fx_trader/reports/*.npz
+fx_trader/reports/*.csv
+fx_trader/reports/*.md
 
 # Local chat-start files (utilities/chat_preflight.py): machine_profile.md holds account tiers and local paths; chat_start.txt is regenerated each run
 fx_trader/local/

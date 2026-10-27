@@ -1,4 +1,4 @@
-# version: 261025b
+# version: 261026
 """
 tests/test_run_runlevel_report.py
 
@@ -94,6 +94,28 @@ def test_survey_lookup():
     print("survey: one row per column, consistent fields, planted run found.")
 
 
+def test_real_date_option():
+    d = _artefacts()
+    base = rr.build_report(_args(d))
+    survey = rr.build_survey(_args(d))
+    for kind, ext in (("meta", "json"), ("real", "npz")):
+        (d / f"runlevel_{kind}_chat1_000001_re.{ext}").write_bytes((d / f"runlevel_{kind}_chat1_000000_re.{ext}").read_bytes())
+        (d / f"runlevel_{kind}_chat1_000000_re.{ext}").unlink()
+    try:
+        rr.build_report(_args(d))
+        raise RuntimeError("expected a missing-artefact rejection without --real-date")
+    except AssertionError as exc:
+        assert "missing artefact" in str(exc)
+    assert rr.build_report(_args(d, "--real-date", "000001")) == base, "the real artefact is read from its own date; the output is unchanged"
+    assert rr.build_survey(_args(d, "--real-date", "000001")) == survey
+    try:
+        rr.build_report(_args(d, "--real-date", "01"))
+        raise RuntimeError("expected a rejection of a malformed --real-date")
+    except AssertionError as exc:
+        assert "YYMMDD" in str(exc)
+    print("--real-date: real artefact read from its own run date; malformed date rejected.")
+
+
 def test_report_rejections():
     d = _artefacts()
     for extra in (("--cols", "median|W6|full|trailing|raw|abs|99"), ("--cols", "median|W6|full|trailing|raw|bar|1")):
@@ -126,5 +148,6 @@ def test_report_rejections():
 if __name__ == "__main__":
     test_report_sections_and_values()
     test_survey_lookup()
+    test_real_date_option()
     test_report_rejections()
     print("\nAll run_runlevel_report tests passed.")

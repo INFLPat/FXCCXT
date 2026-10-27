@@ -33,7 +33,7 @@ fx_trader/
 ├── run_calibration_stats.py       # read-only calibration statistics for the synthetic fault worlds: per-hour LOO/noise/spread/volume shape, real flag counts on threshold grids, mask, block-start counts (14p4-ii)
 ├── run_world_experiment.py        # fault-injection WORLDS (parametric, empirical, 4 calibrated) x core/family/double/adjacent/blocks scenario sets; grids, histograms, Tier 2 Huber JSONL; report only (14p4-iii)
 ├── run_runlevel_experiment.py     # run-level view for persistent arm offsets: numpy statistics x windows x scales x thresholds, injection, real runs, per-bar dump (14p4-iv; built and run 261025, see CONTEXT_HANDOFF 4l and 4l.9; 14p4-vi flag bank: threshold-free series dump, Hodges-Lehmann / Huber, rz floors, dense ladders, step_plateau, run extents: 4m)
-├── run_runlevel_report.py         # read-only: turns the runlevel_* artefacts into RUNLEVEL_RESULTS_14p4-iv.md (+ an all-columns lookup CSV in reports/); report only (14p4-iv close-out)
+├── run_runlevel_report.py         # read-only: turns the runlevel_* artefacts into RUNLEVEL_RESULTS_14p4-iv.md (+ an all-columns lookup CSV in reports/); report only (14p4-iv close-out); `--real-date` reads a later real-only re-run (14p4-vi close-out)
 ├── RUNLEVEL_RESULTS_14p4-iv.md    # committed numbers reference of the 14p4-iv run (ten headline columns, all tables); read this instead of re-running
 ├── requirements-dev.txt           # dev-only: coverage, hypothesis
 ├── run_monitor.py                  # run monitor: duration/metadata JSONL logs into logs/ (gitignored); see its docstring
